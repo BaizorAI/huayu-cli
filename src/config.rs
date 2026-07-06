@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
@@ -5,6 +6,14 @@ use serde::{Deserialize, Serialize};
 use crate::error::AppError;
 
 const CONFIG_FILE: &str = "config.json";
+
+/// Per-model metadata returned by the server and cached in config.json.
+/// Used to populate `[model_info]` sections in codex config.toml.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ModelInfo {
+    pub context_window: u32,
+    pub max_output_tokens: u32,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HuazhenConfig {
@@ -32,6 +41,13 @@ pub struct HuazhenConfig {
     pub claude_max_turns: u32,
     #[serde(default = "default_claude_permission_mode")]
     pub claude_permission_mode: String,
+
+    // ── Model metadata (from server on login) ──────────────────────────────
+    // Maps model name → context_window / max_output_tokens.
+    // Written to codex [model_info] sections; falls back to built-in values
+    // for well-known baizor models when the server hasn't provided anything.
+    #[serde(default)]
+    pub model_info: HashMap<String, ModelInfo>,
 }
 
 fn default_base_url() -> String {
@@ -66,6 +82,7 @@ impl Default for HuazhenConfig {
             claude_model: String::new(),
             claude_max_turns: 0,
             claude_permission_mode: default_claude_permission_mode(),
+            model_info: HashMap::new(),
         }
     }
 }
@@ -124,12 +141,49 @@ pub fn effective_claude_model(cfg: &HuazhenConfig) -> &str {
 }
 
 /// Write the minimal codex config files into ~/.huazhen/codex/.
+///
+/// Model metadata is sourced from `cfg.model_info` (populated from the server
+/// on login). Built-in values for well-known baizor models are used as a
+/// fallback when the server hasn't provided metadata for a specific model.
 pub fn write_codex_config(cfg: &HuazhenConfig) -> Result<(), AppError> {
     let home = codex_home();
     std::fs::create_dir_all(&home).map_err(AppError::Io)?;
 
     let model = effective_codex_model(cfg);
-    let config_toml = format!("model = \"{}\"\n", model);
+
+    // Merge built-in fallbacks with server-provided metadata.
+    // Server values win when present; built-ins fill the gap.
+    let mut merged: HashMap<String, ModelInfo> = [
+        ("huazhen-v1",      ModelInfo { context_window: 128000, max_output_tokens: 16384 }),
+        ("huazhen-fable-5", ModelInfo { context_window: 128000, max_output_tokens: 16384 }),
+        ("huazhen3.6-35b",  ModelInfo { context_window: 32768,  max_output_tokens: 8192  }),
+    ]
+    .into_iter()
+    .map(|(k, v)| (k.to_string(), v))
+    .collect();
+
+    for (name, info) in &cfg.model_info {
+        merged.insert(name.clone(), info.clone());
+    }
+
+    // Ensure the active model always has an entry (generic fallback if unknown).
+    merged.entry(model.to_string()).or_insert(ModelInfo {
+        context_window: 128000,
+        max_output_tokens: 16384,
+    });
+
+    // Sort entries so the output is deterministic.
+    let mut entries: Vec<(String, ModelInfo)> = merged.into_iter().collect();
+    entries.sort_by(|a, b| a.0.cmp(&b.0));
+
+    let mut config_toml = format!("model = \"{model}\"\n");
+    for (name, info) in &entries {
+        config_toml.push_str(&format!(
+            "\n[model_info.\"{}\"]\ncontext_window = {}\nmax_output_tokens = {}\n",
+            name, info.context_window, info.max_output_tokens
+        ));
+    }
+
     std::fs::write(home.join("config.toml"), config_toml).map_err(AppError::Io)?;
 
     let auth = serde_json::json!({ "OPENAI_API_KEY": cfg.api_key });

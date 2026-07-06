@@ -313,6 +313,12 @@ impl App {
             if line == "__DONE__" {
                 self.update_rx = None;
                 self.push_main("─── 更新结束 ───");
+                // Refresh tool configs so any format changes (e.g. new model_info entries)
+                // are applied immediately without requiring a restart or re-login.
+                if !self.config.api_key.is_empty() {
+                    let _ = crate::config::write_codex_config(&self.config);
+                    let _ = crate::config::write_claude_config(&self.config);
+                }
                 break;
             }
             self.push_main(line);
@@ -355,6 +361,10 @@ impl App {
                     }
                     if let Some(p) = outcome.claude.permission_mode {
                         self.config.claude_permission_mode = p;
+                    }
+                    // Apply model metadata from server
+                    if !outcome.model_info.is_empty() {
+                        self.config.model_info = outcome.model_info;
                     }
                     let _ = crate::config::save(&self.config);
                     let _ = crate::config::write_codex_config(&self.config);

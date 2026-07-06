@@ -1,4 +1,5 @@
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::time::Duration;
 
 pub const LOGIN_TIMEOUT_SECS: u64 = 300;
@@ -24,6 +25,16 @@ pub struct LoginOutcome {
     pub default_model: Option<String>,
     pub codex: CodexSettings,
     pub claude: ClaudeSettings,
+    /// Model metadata from the server: name → {context_window, max_output_tokens}.
+    /// Applied to HuazhenConfig.model_info on login.
+    pub model_info: HashMap<String, crate::config::ModelInfo>,
+}
+
+/// Intermediate serde struct matching the server's model_info entry shape.
+#[derive(Deserialize)]
+struct PollModelInfo {
+    context_window: u32,
+    max_output_tokens: u32,
 }
 
 #[derive(Deserialize)]
@@ -46,6 +57,9 @@ struct PollData {
     claude_max_turns: Option<u32>,
     #[serde(default)]
     claude_permission_mode: Option<String>,
+    // model metadata
+    #[serde(default)]
+    model_info: Option<HashMap<String, PollModelInfo>>,
 }
 
 #[derive(Deserialize)]
@@ -88,6 +102,17 @@ impl LoginService {
                         if let Some(data) = body.data {
                             if data.status == "done" {
                                 if let Some(key) = data.key.filter(|k| !k.is_empty()) {
+                                    let model_info = data
+                                        .model_info
+                                        .unwrap_or_default()
+                                        .into_iter()
+                                        .map(|(name, info)| {
+                                            (name, crate::config::ModelInfo {
+                                                context_window: info.context_window,
+                                                max_output_tokens: info.max_output_tokens,
+                                            })
+                                        })
+                                        .collect();
                                     return Ok(LoginOutcome {
                                         api_key: key,
                                         default_model: data
@@ -103,6 +128,7 @@ impl LoginService {
                                             max_turns: data.claude_max_turns,
                                             permission_mode: data.claude_permission_mode.filter(|v| !v.is_empty()),
                                         },
+                                        model_info,
                                     });
                                 }
                             }

@@ -35,6 +35,13 @@ pub fn execute(tools: Vec<&'static str>) {
     println!();
     if ok {
         println!("{}", "  全部完成！运行 `huazhen` 启动。".bright_green());
+        // Refresh tool configs (e.g. codex model_info) after a successful update
+        // so that the fix takes effect without requiring a re-login.
+        let cfg = crate::config::load();
+        if !cfg.api_key.is_empty() {
+            let _ = crate::config::write_codex_config(&cfg);
+            let _ = crate::config::write_claude_config(&cfg);
+        }
     } else {
         println!("{}", "  部分工具安装失败，请检查上方错误信息。".red());
         std::process::exit(1);

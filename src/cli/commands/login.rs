@@ -68,6 +68,11 @@ pub fn execute(args: LoginArgs) -> Result<(), AppError> {
         cfg.claude_permission_mode = p;
     }
 
+    // Apply model metadata from server (merge — server values override built-ins)
+    if !outcome.model_info.is_empty() {
+        cfg.model_info = outcome.model_info;
+    }
+
     config::save(&cfg)?;
     write_codex_config(&cfg)?;
     write_claude_config(&cfg)?;
