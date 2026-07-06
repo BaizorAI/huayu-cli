@@ -182,10 +182,6 @@ pub fn spawn(
         ToolType::Codex => {
             let mut c = CommandBuilder::new(tool.binary_path());
             c.arg("exec");
-            // --ignore-user-config prevents config.toml from being loaded so codex
-            // never sees a [model_providers.openai] block (reserved name → validation error).
-            // Auth still reads from CODEX_HOME/auth.json.
-            c.arg("--ignore-user-config");
             // Codex appends /responses to openai_base_url, so the URL must include /v1.
             let domain = base_url.trim_end_matches('/');
             c.arg("-c");
