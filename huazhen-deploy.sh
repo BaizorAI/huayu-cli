@@ -20,21 +20,17 @@ set -euo pipefail
 # inherit the Windows PATH entry added by the Rust installer).
 source "$HOME/.cargo/env" 2>/dev/null || export PATH="$HOME/.cargo/bin:$PATH"
 
+# POSIX path (for scp, tar, etc.)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RELEASE_DIR="$SCRIPT_DIR/release"
 
-# Convert Git Bash POSIX path (/f/foo/bar) to Windows path (F:\foo\bar).
-# Uses only bash built-ins — avoids cygpath whose output varies by installation.
-to_win_path() {
-    local p="$1"
-    if [[ "$p" =~ ^/([a-zA-Z])/(.*) ]]; then
-        printf '%s' "${BASH_REMATCH[1]^^}:\\${BASH_REMATCH[2]}" | tr '/' '\\'
-    else
-        echo "$p"
-    fi
-}
-WIN_SCRIPT_DIR=$(to_win_path "$SCRIPT_DIR")
-WIN_RELEASE_DIR=$(to_win_path "$RELEASE_DIR")
+# Windows-style path for PowerShell calls.
+# cmd.exe %CD% always returns the logical path, so NTFS junctions like
+# C:\Users\Lucky\baizor\baizor-new-api\huazhen stay as C:\Users\Lucky\baizor\baizor-new-api\huazhen rather than resolving to
+# the real target.  We rely on the user running this script from the
+# repo root (where Cargo.toml lives), which is the normal usage.
+WIN_SCRIPT_DIR=$(cmd.exe /c "echo %CD%" 2>/dev/null | tr -d '\r\n')
+WIN_RELEASE_DIR="${WIN_SCRIPT_DIR}\\release"
 WSL_SRC_WIN="C:\\wsl-build\\todo-app"
 DEPLOY_HOST="baizor"
 DEPLOY_PATH="/lucky/NewApi/data/install/"
@@ -63,7 +59,6 @@ echo "  ────────────────────────
 
 if [ "$SKIP_WIN" = false ]; then
     step "Windows 编译 (cargo build --release)"
-    cd "$SCRIPT_DIR"
     cargo build --release || fail "cargo build 失败"
     ok "huazhen.exe"
 else
@@ -73,8 +68,9 @@ fi
 # ── 2. Windows 打包 ──────────────────────────────────────────────────────────
 
 step "Windows 打包 (package.ps1 -SkipBuild)"
-# Use -Command + & operator: avoids MSYS backslash mangling that breaks -File <path>.
-powershell.exe -NonInteractive -Command "& { & '$WIN_SCRIPT_DIR\\package.ps1' -SkipBuild; exit \$LASTEXITCODE }" \
+# Use -File with just the filename (resolved relative to CWD by PowerShell).
+# Avoids MSYS backslash-mangling of absolute paths.
+powershell.exe -NonInteractive -ExecutionPolicy Bypass -File package.ps1 -SkipBuild \
     || fail "package.ps1 失败"
 ok "huazhen-x86_64-pc-windows-msvc.zip"
 
@@ -115,9 +111,9 @@ PKGEOF
 
     # Copy Linux tarball to release/
     powershell.exe -NonInteractive -Command "
-        New-Item -ItemType Directory -Force -Path '$WIN_RELEASE_DIR' | Out-Null
+        New-Item -ItemType Directory -Force -Path '${WIN_RELEASE_DIR}' | Out-Null
         Copy-Item 'C:\\wsl-build\\todo-app\\release\\huazhen-${VERSION}-x86_64-unknown-linux-gnu.tar.gz' \
-                  '$WIN_RELEASE_DIR\\' -Force
+                  '${WIN_RELEASE_DIR}\\' -Force
         Write-Host 'copied linux tarball'
     " || fail "Linux tarball 复制失败"
     ok "huazhen-${VERSION}-x86_64-unknown-linux-gnu.tar.gz"
