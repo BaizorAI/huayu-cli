@@ -24,7 +24,7 @@ pub fn execute(args: LoginArgs) -> Result<(), AppError> {
 
     println!();
     println!("{}", "╔══════════════════════════════════════════════════════════╗".bright_blue().bold());
-    println!("{}", "║            华珍 huazhen — 浏览器登录                    ║".bright_blue().bold());
+    println!("{}", "║            华宇 huayu — 浏览器登录                      ║".bright_blue().bold());
     println!("{}", "╠══════════════════════════════════════════════════════════╣".bright_blue().bold());
     println!("║  {}  ║", login_url.bright_white().bold());
     println!("{}", "╚══════════════════════════════════════════════════════════╝".bright_blue().bold());
@@ -85,7 +85,7 @@ pub fn execute(args: LoginArgs) -> Result<(), AppError> {
     println!("  Codex 模型: {}", codex_model);
     println!("  Claude 模型: {}", claude_model);
     println!();
-    println!("{}", "运行 `huazhen` 启动 TUI 工作台".dimmed());
+    println!("{}", "运行 `huayu` 启动 TUI 工作台".dimmed());
 
     Ok(())
 }

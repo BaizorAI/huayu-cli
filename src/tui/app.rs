@@ -2,7 +2,7 @@ use std::sync::mpsc;
 use std::time::Instant;
 
 use crate::command::{self, AppCommand, UpdateTarget};
-use crate::config::HuazhenConfig;
+use crate::config::HuayuConfig;
 use crate::services::login::{LoginOutcome, LoginService};
 use crate::tool::{Message, ToolEvent, ToolProcess, ToolType};
 
@@ -45,7 +45,7 @@ pub struct LoginOverlay {
 // ── App ────────────────────────────────────────────────────────────────────
 
 pub struct App {
-    pub config: HuazhenConfig,
+    pub config: HuayuConfig,
 
     // Active tool
     pub tool_type: ToolType,
@@ -94,7 +94,7 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(config: HuazhenConfig) -> Self {
+    pub fn new(config: HuayuConfig) -> Self {
         let tool_type = ToolType::from_str(&config.active_tool);
         let connection_status = if config.api_key.is_empty() {
             ConnectionStatus::NotConfigured
@@ -670,14 +670,14 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{HuazhenConfig, TempConfigGuard};
+    use crate::config::{HuayuConfig, TempConfigGuard};
 
     fn make_app() -> App {
-        App::new(HuazhenConfig::default())
+        App::new(HuayuConfig::default())
     }
 
     fn make_logged_in_app() -> App {
-        App::new(HuazhenConfig {
+        App::new(HuayuConfig {
             api_key: "sk-test-key".to_string(),
             ..Default::default()
         })

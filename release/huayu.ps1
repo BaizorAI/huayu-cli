@@ -1,11 +1,11 @@
-# huazhen Windows installer
-# Usage: irm https://baizor.com/install/huazhen.ps1 | iex
+﻿# huayu Windows installer
+# Usage: irm https://baizor.com/install/huayu.ps1 | iex
 #
 # What this script does:
-#   1. Downloads the latest huazhen bundle from baizor.com/install/
-#      (includes huazhen.exe, codex.exe, claude) — no Node.js or npm required.
-#   2. Extracts everything to %USERPROFILE%\.huazhen\
-#   3. Adds %USERPROFILE%\.huazhen\bin to your User PATH.
+#   1. Downloads the latest huayu bundle from baizor.com/install/
+#      (includes huayu.exe, codex.exe, claude) — no Node.js or npm required.
+#   2. Extracts everything to %USERPROFILE%\.huayu\
+#   3. Adds %USERPROFILE%\.huayu\bin to your User PATH.
 #   4. Prints next steps.
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -14,9 +14,9 @@ $ErrorActionPreference = 'Stop'
 # ── Config ─────────────────────────────────────────────────────────────────
 
 $BaseUrl     = "https://baizor.com/install"
-$HuazhenHome = "$env:USERPROFILE\.huazhen"
-$BinDir      = "$HuazhenHome\bin"
-$ToolsDir    = "$HuazhenHome\tools"
+$huayuHome = "$env:USERPROFILE\.huayu"
+$BinDir      = "$huayuHome\bin"
+$ToolsDir    = "$huayuHome\tools"
 
 # ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -39,12 +39,12 @@ if ($env:PROCESSOR_ARCHITECTURE -ne "AMD64") {
 # ── Fetch version ──────────────────────────────────────────────────────────
 
 Write-Host ""
-Write-Host "huazhen installer" -ForegroundColor White
+Write-Host "huayu installer" -ForegroundColor White
 Write-Host "─────────────────────────────────────────────────────────" -ForegroundColor DarkGray
 Write-Step "Fetching latest version from baizor.com ..."
 
 try {
-    $version = (Invoke-RestMethod -Uri "$BaseUrl/huazhen-version.txt" -UseBasicParsing).Trim()
+    $version = (Invoke-RestMethod -Uri "$BaseUrl/huayu-version.txt" -UseBasicParsing).Trim()
 } catch {
     Fail "Could not reach baizor.com: $_`n       Check your internet connection or try again later."
 }
@@ -53,7 +53,7 @@ Write-Ok "Latest version: $version"
 
 # ── Download bundle ────────────────────────────────────────────────────────
 
-$zipName    = "huazhen-x86_64-pc-windows-msvc.zip"
+$zipName    = "huayu-x86_64-pc-windows-msvc.zip"
 $downloadUrl = "$BaseUrl/$zipName"
 
 $tempDir = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), [System.Guid]::NewGuid())
@@ -73,7 +73,7 @@ Write-Ok "Downloaded ${sizeMb} MB"
 
 # ── Extract ────────────────────────────────────────────────────────────────
 
-Write-Step "Extracting to $HuazhenHome ..."
+Write-Step "Extracting to $huayuHome ..."
 
 New-Item -ItemType Directory -Path $BinDir   -Force | Out-Null
 New-Item -ItemType Directory -Path $ToolsDir -Force | Out-Null
@@ -82,12 +82,12 @@ try {
     $extractDir = "$tempDir\extracted"
     Expand-Archive -Path $zipPath -DestinationPath $extractDir -Force
 
-    # huazhen.exe → bin\
-    $huazhenExe = Get-ChildItem -Path $extractDir -Filter "huazhen.exe" -Recurse |
+    # huayu.exe → bin\
+    $huayuExe = Get-ChildItem -Path $extractDir -Filter "huayu.exe" -Recurse |
                   Select-Object -First 1
-    if (-not $huazhenExe) { throw "huazhen.exe not found in archive" }
-    Copy-Item -Path $huazhenExe.FullName -Destination "$BinDir\huazhen.exe" -Force
-    Write-Ok "huazhen.exe  ->  $BinDir"
+    if (-not $huayuExe) { throw "huayu.exe not found in archive" }
+    Copy-Item -Path $huayuExe.FullName -Destination "$BinDir\huayu.exe" -Force
+    Write-Ok "huayu.exe  ->  $BinDir"
 
     # tools\codex.exe → tools\
     $codexExe = Get-ChildItem -Path $extractDir -Filter "codex.exe" -Recurse |
@@ -96,7 +96,7 @@ try {
         Copy-Item -Path $codexExe.FullName -Destination "$ToolsDir\codex.exe" -Force
         Write-Ok "codex.exe    ->  $ToolsDir"
     } else {
-        Write-Warn "codex.exe not found in archive; run 'huazhen update codex' after install."
+        Write-Warn "codex.exe not found in archive; run 'huayu update codex' after install."
     }
 
     # tools\claude* → tools\
@@ -107,11 +107,11 @@ try {
     if ($claudeFiles.Count -gt 0) {
         Write-Ok "claude       ->  $ToolsDir"
     } else {
-        Write-Warn "claude not found in archive; run 'huazhen update claude' after install."
+        Write-Warn "claude not found in archive; run 'huayu update claude' after install."
     }
 
     # version markers
-    [System.IO.File]::WriteAllText("$ToolsDir\huazhen.version", $version)
+    [System.IO.File]::WriteAllText("$ToolsDir\huayu.version", $version)
 
 } catch {
     Remove-Item -Recurse -Force $tempDir -ErrorAction SilentlyContinue
@@ -132,7 +132,7 @@ if (($userPath -split ";") -notcontains $BinDir) {
     Write-Ok "$BinDir already in PATH"
 }
 
-# Make huazhen available in the current session without restarting
+# Make huayu available in the current session without restarting
 $env:PATH = "$env:PATH;$BinDir"
 
 # ── Auto-install tools (codex + claude from baizor.com) ────────────────────
@@ -149,7 +149,7 @@ function Install-Tool([string]$Name, [string]$ToolVersion) {
         Write-Ok "$Name $ToolVersion"
     } catch {
         Write-Warn "$Name download failed: $($_.Exception.Message)"
-        Write-Host "    Run 'huazhen update' after launch to retry." -ForegroundColor DarkGray
+        Write-Host "    Run 'huayu update' after launch to retry." -ForegroundColor DarkGray
     } finally {
         Remove-Item $tmpZip -ErrorAction SilentlyContinue
     }
@@ -176,15 +176,15 @@ $CodexConfigFile = "$CodexConfigDir\config.toml"
 if (-not (Test-Path $CodexConfigFile)) {
     New-Item -ItemType Directory -Path $CodexConfigDir -Force | Out-Null
     $configContent = @'
-[model_info."huazhen-v1"]
+[model_info."huayu-v1"]
 context_window = 128000
 max_output_tokens = 16384
 
-[model_info."huazhen-fable-5"]
+[model_info."huayu-fable-5"]
 context_window = 128000
 max_output_tokens = 16384
 
-[model_info."huazhen3.6-35b"]
+[model_info."huayu3.6-35b"]
 context_window = 32768
 max_output_tokens = 8192
 '@
@@ -196,10 +196,10 @@ max_output_tokens = 8192
 
 Write-Host ""
 Write-Host "─────────────────────────────────────────────────────────" -ForegroundColor DarkGray
-Write-Host "  huazhen $version installed!" -ForegroundColor Green
+Write-Host "  huayu $version installed!" -ForegroundColor Green
 Write-Host ""
-Write-Host "  Start:   " -NoNewline; Write-Host "huazhen" -ForegroundColor White
-Write-Host "  Login:   " -NoNewline; Write-Host "huazhen login" -ForegroundColor White
+Write-Host "  Start:   " -NoNewline; Write-Host "huayu" -ForegroundColor White
+Write-Host "  Login:   " -NoNewline; Write-Host "huayu login" -ForegroundColor White
 Write-Host ""
-Write-Host "  If 'huazhen' is not found, open a new terminal window." -ForegroundColor DarkGray
+Write-Host "  If 'huayu' is not found, open a new terminal window." -ForegroundColor DarkGray
 Write-Host ""

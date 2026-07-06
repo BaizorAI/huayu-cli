@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# package-linux.sh — Build huazhen for Linux and bundle codex+claude as tar.gz
+# package-linux.sh — Build huayu for Linux and bundle codex+claude as tar.gz
 # Run on Linux (baizor server, WSL, or CI)
 #
 # Outputs to ./release/:
-#   huazhen-VERSION-TRIPLE.tar.gz
+#   huayu-VERSION-TRIPLE.tar.gz
 #   codex-CODEX_VERSION-TRIPLE.tar.gz
 #   claude-CLAUDE_VERSION-TRIPLE.tar.gz
-#   huazhen-version.txt / codex-version.txt / claude-version.txt
+#   huayu-version.txt / codex-version.txt / claude-version.txt
 #
 # Usage:
 #   bash package-linux.sh
@@ -44,7 +44,7 @@ need_cmd curl
 need_cmd tar
 
 echo ""
-echo "  huazhen Linux packager"
+echo "  huayu Linux packager"
 echo "  ─────────────────────────────────────────────────────"
 
 mkdir -p "$RELEASE_DIR"
@@ -69,26 +69,26 @@ if [ "$SKIP_BUILD" = false ]; then
         #   rustup target add x86_64-unknown-linux-musl
         cargo build --release --target "$TRIPLE"
     fi
-    BINARY="$SCRIPT_DIR/target/$TRIPLE/release/huazhen"
+    BINARY="$SCRIPT_DIR/target/$TRIPLE/release/huayu"
 else
     # Try to find pre-built binary
-    BINARY="$SCRIPT_DIR/target/$TRIPLE/release/huazhen"
+    BINARY="$SCRIPT_DIR/target/$TRIPLE/release/huayu"
     [ -f "$BINARY" ] || fail "Binary not found at $BINARY — run without --skip-build first"
 fi
 
 VERSION=$("$BINARY" --version 2>&1 | awk '{print $NF}')
 [ -n "$VERSION" ] || fail "无法从 binary 读取版本"
-ok "huazhen $VERSION  ($TRIPLE)"
+ok "huayu $VERSION  ($TRIPLE)"
 
-# ── bundle huazhen binary ──────────────────────────────────────────────────
-step "打包 huazhen-$VERSION-$TRIPLE.tar.gz ..."
-HUAZHEN_STAGE="$WORK_DIR/huazhen"
+# ── bundle huayu binary ──────────────────────────────────────────────────
+step "打包 huayu-$VERSION-$TRIPLE.tar.gz ..."
+HUAZHEN_STAGE="$WORK_DIR/huayu"
 mkdir -p "$HUAZHEN_STAGE"
-cp "$BINARY" "$HUAZHEN_STAGE/huazhen"
-chmod +x "$HUAZHEN_STAGE/huazhen"
-tar -czf "$RELEASE_DIR/huazhen-$VERSION-$TRIPLE.tar.gz" -C "$HUAZHEN_STAGE" huazhen
-echo "$VERSION" > "$RELEASE_DIR/huazhen-version.txt"
-ok "huazhen-$VERSION-$TRIPLE.tar.gz"
+cp "$BINARY" "$HUAZHEN_STAGE/huayu"
+chmod +x "$HUAZHEN_STAGE/huayu"
+tar -czf "$RELEASE_DIR/huayu-$VERSION-$TRIPLE.tar.gz" -C "$HUAZHEN_STAGE" huayu
+echo "$VERSION" > "$RELEASE_DIR/huayu-version.txt"
+ok "huayu-$VERSION-$TRIPLE.tar.gz"
 
 # ── portable Node.js ───────────────────────────────────────────────────────
 if [ "$SKIP_TOOLS" = false ]; then

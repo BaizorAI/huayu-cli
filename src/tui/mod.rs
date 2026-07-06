@@ -16,11 +16,11 @@ use crossterm::{
 };
 use ratatui::{backend::CrosstermBackend, Terminal};
 
-use crate::config::HuazhenConfig;
+use crate::config::HuayuConfig;
 
 const TICK: Duration = Duration::from_millis(100);
 
-pub fn run(config: HuazhenConfig) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run(config: HuayuConfig) -> Result<(), Box<dyn std::error::Error>> {
     enable_raw_mode()?;
     let mut stdout = std::io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
@@ -42,7 +42,7 @@ pub fn run(config: HuazhenConfig) -> Result<(), Box<dyn std::error::Error>> {
 
 fn run_loop(
     terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>,
-    config: HuazhenConfig,
+    config: HuayuConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut app = App::new(config);
 

@@ -7,12 +7,12 @@ pub fn execute() {
     let cfg = config::load();
 
     println!();
-    println!("{}", "── 华珍 huazhen status ──────────────────────────".bright_blue().bold());
+    println!("{}", "── 华宇 huayu status ──────────────────────────".bright_blue().bold());
     println!();
 
     // API Key
     if cfg.api_key.is_empty() {
-        println!("  API Key   {}", "未配置 — 请运行 `huazhen login`".red());
+        println!("  API Key   {}", "未配置 — 请运行 `huayu login`".red());
     } else {
         println!("  API Key   {}", mask_key(&cfg.api_key).bright_white());
     }

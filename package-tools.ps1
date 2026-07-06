@@ -19,7 +19,7 @@ $ErrorActionPreference = 'Stop'
 
 $Triple        = "x86_64-pc-windows-msvc"
 $ReleaseDir    = "$PSScriptRoot\release"
-$WorkDir       = [System.IO.Path]::Combine($env:TEMP, "huazhen-tools-$([System.Guid]::NewGuid())")
+$WorkDir       = [System.IO.Path]::Combine($env:TEMP, "huayu-tools-$([System.Guid]::NewGuid())")
 $CodexVersion  = "0.142.5"
 $ClaudeVersion = "1.0.3"
 
@@ -33,7 +33,7 @@ function Warn([string]$msg) { Write-Host "  [!]  $msg" -ForegroundColor Yellow }
 function Fail([string]$msg) { Write-Host "`n  [error] $msg`n" -ForegroundColor Red; exit 1 }
 
 Write-Host ""
-Write-Host "  huazhen tool bundler — Windows x64" -ForegroundColor White
+Write-Host "  huayu tool bundler — Windows x64" -ForegroundColor White
 Write-Host "  ─────────────────────────────────────────────────────" -ForegroundColor DarkGray
 
 if (-not (Get-Command "npm" -ErrorAction SilentlyContinue)) {

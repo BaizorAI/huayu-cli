@@ -19,7 +19,7 @@ warn()  { echo "  [!]  $*"; }
 fail()  { echo "  [error] $*" >&2; exit 1; }
 
 echo ""
-echo "  huazhen Linux tool bundler"
+echo "  huayu Linux tool bundler"
 echo "  ─────────────────────────────────────────────────────"
 
 # ── Download portable Node.js ──────────────────────────────────────────────

@@ -52,7 +52,7 @@ fn render_status_bar(f: &mut Frame, app: &App, area: Rect) {
 
     let line = Line::from(vec![
         Span::styled(
-            " 华珍 huazhen ",
+            " 华宇 huayu ",
             Style::default().fg(theme::TITLE).add_modifier(Modifier::BOLD),
         ),
         Span::styled("│", Style::default().fg(theme::BORDER)),
@@ -425,7 +425,7 @@ fn render_login_overlay(f: &mut Frame, ov: &crate::tui::app::LoginOverlay, area:
 
     let block = Block::default()
         .title(Span::styled(
-            " 华珍 — 登录 baizor.com ",
+            " 华宇 — 登录 baizor.com ",
             Style::default()
                 .fg(theme::TITLE)
                 .add_modifier(Modifier::BOLD),

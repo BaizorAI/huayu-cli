@@ -1,22 +1,22 @@
-# package.ps1 — Build and package huazhen for Windows x64
+# package.ps1 — Build and package huayu for Windows x64
 # Outputs zip directly to .\release\ (*.zip gitignored), run deploy.sh to push.
 #
 # Usage:
 #   .\package.ps1              # full build + package
-#   .\package.ps1 -SkipBuild   # reuse existing target\release\huazhen.exe
+#   .\package.ps1 -SkipBuild   # reuse existing target\release\huayu.exe
 
 param(
-    [switch]$SkipBuild  # skip cargo build, use existing target\release\huazhen.exe
+    [switch]$SkipBuild  # skip cargo build, use existing target\release\huayu.exe
 )
 
 $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 $Triple     = "x86_64-pc-windows-msvc"
-$ZipName    = "huazhen-$Triple.zip"
+$ZipName    = "huayu-$Triple.zip"
 $ReleaseDir = "$PSScriptRoot\release"
 $ZipOut     = "$ReleaseDir\$ZipName"
-$ToolsDir   = "$env:USERPROFILE\.huazhen\tools"
+$ToolsDir   = "$env:USERPROFILE\.huayu\tools"
 
 # ── helpers ────────────────────────────────────────────────────────────────
 
@@ -35,7 +35,7 @@ if ($cargoToml -match 'version\s*=\s*"([^"]+)"') {
 }
 
 Write-Host ""
-Write-Host "  huazhen $Version — Windows x64 package" -ForegroundColor White
+Write-Host "  huayu $Version — Windows x64 package" -ForegroundColor White
 Write-Host "  ─────────────────────────────────────────────────────" -ForegroundColor DarkGray
 
 # ── build ──────────────────────────────────────────────────────────────────
@@ -52,18 +52,18 @@ if ($SkipBuild) {
     Ok "Build complete"
 }
 
-$ExePath = "$PSScriptRoot\target\release\huazhen.exe"
+$ExePath = "$PSScriptRoot\target\release\huayu.exe"
 if (-not (Test-Path $ExePath)) {
-    Fail "huazhen.exe not found at $ExePath — run without -SkipBuild"
+    Fail "huayu.exe not found at $ExePath — run without -SkipBuild"
 }
 
 # ── stage area ─────────────────────────────────────────────────────────────
 
-$Stage = Join-Path $env:TEMP "huazhen-stage-$(New-Guid)"
+$Stage = Join-Path $env:TEMP "huayu-stage-$(New-Guid)"
 New-Item -ItemType Directory -Path "$Stage\tools" -Force | Out-Null
 
-Copy-Item $ExePath "$Stage\huazhen.exe" -Force
-Ok "huazhen.exe  ($([Math]::Round((Get-Item $ExePath).Length / 1MB, 1)) MB)"
+Copy-Item $ExePath "$Stage\huayu.exe" -Force
+Ok "huayu.exe  ($([Math]::Round((Get-Item $ExePath).Length / 1MB, 1)) MB)"
 
 # codex.exe
 $codexExe = "$ToolsDir\codex.exe"
@@ -77,7 +77,7 @@ if (Test-Path $codexExe) {
         Ok "codex.exe"
     }
 } else {
-    Warn "codex.exe not found — run 'huazhen update codex' first"
+    Warn "codex.exe not found — run 'huayu update codex' first"
 }
 
 # claude*
@@ -90,13 +90,13 @@ if ($claudeFiles.Count -gt 0) {
     $vStr = if (Test-Path $claudeVer) { " v$((Get-Content $claudeVer -Raw).Trim())" } else { "" }
     Ok "claude$vStr"
 } else {
-    Warn "claude not found — run 'huazhen update claude' first"
+    Warn "claude not found — run 'huayu update claude' first"
 }
 
 # ── zip → release\ ─────────────────────────────────────────────────────────
 
-# Kill any running huazhen instances so the exe isn't locked during zipping.
-Get-Process -Name huazhen -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+# Kill any running huayu instances so the exe isn't locked during zipping.
+Get-Process -Name huayu -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 
 New-Item -ItemType Directory -Path $ReleaseDir -Force | Out-Null
 Step "Creating $ZipName ..."
@@ -107,8 +107,8 @@ Ok "$ZipName  ($([Math]::Round((Get-Item $ZipOut).Length / 1MB, 1)) MB)"
 
 # ── version file ──────────────────────────────────────────────────────────
 
-[System.IO.File]::WriteAllText("$ReleaseDir\huazhen-version.txt", "$Version`n")
-Ok "huazhen-version.txt ($Version)"
+[System.IO.File]::WriteAllText("$ReleaseDir\huayu-version.txt", "$Version`n")
+Ok "huayu-version.txt ($Version)"
 
 # ── summary ───────────────────────────────────────────────────────────────
 

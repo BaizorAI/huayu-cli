@@ -36,7 +36,7 @@ impl ToolType {
         }
     }
 
-    /// Preferred binary: local huazhen install first, then system PATH.
+    /// Preferred binary: local huayu install first, then system PATH.
     pub fn binary_path(&self) -> PathBuf {
         if let Some(local) = crate::services::installer::local_binary(self.binary()) {
             return local;
@@ -191,7 +191,7 @@ pub fn spawn(
             c.arg("-c");
             c.arg(format!("openai_base_url=\"{}/v1\"", domain));
             // Disable interactive user-input requests so codex never blocks waiting
-            // for a reply in huazhen's non-interactive PTY environment.
+            // for a reply in huayu's non-interactive PTY environment.
             c.arg("-c");
             c.arg("disable_response_storage=true");
             // Apply reasoning effort if set
@@ -255,7 +255,7 @@ pub fn spawn(
         // Write full untruncated output to a debug log so errors aren't cut off by TUI column width.
         let log_path = dirs::home_dir()
             .unwrap_or_else(|| std::path::PathBuf::from("."))
-            .join(".huazhen")
+            .join(".huayu")
             .join("debug.log");
         let mut log_file = std::fs::OpenOptions::new()
             .create(true)

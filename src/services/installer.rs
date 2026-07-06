@@ -11,7 +11,7 @@ pub fn tools_dir() -> PathBuf {
 }
 
 /// Resolved path to a locally managed tool binary.
-/// Checks huazhen's tools directory first (native binary), then falls back
+/// Checks huayu's tools directory first (native binary), then falls back
 /// to the npm node_modules layout for backward compatibility with prior installs.
 pub fn local_binary(name: &str) -> Option<PathBuf> {
     let dir = tools_dir();

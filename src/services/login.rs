@@ -26,7 +26,7 @@ pub struct LoginOutcome {
     pub codex: CodexSettings,
     pub claude: ClaudeSettings,
     /// Model metadata from the server: name → {context_window, max_output_tokens}.
-    /// Applied to HuazhenConfig.model_info on login.
+    /// Applied to HuayuConfig.model_info on login.
     pub model_info: HashMap<String, crate::config::ModelInfo>,
 }
 

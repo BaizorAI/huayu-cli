@@ -11,7 +11,7 @@ pub enum AppError {
     #[error("Network error: {0}")]
     Network(String),
 
-    #[error("Auth error: please run `huazhen login` to re-authenticate")]
+    #[error("Auth error: please run `huayu login` to re-authenticate")]
     Auth,
 
     #[error("Tool not found: `{0}` is not installed or not in PATH")]

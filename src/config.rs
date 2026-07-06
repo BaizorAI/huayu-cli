@@ -16,7 +16,7 @@ pub struct ModelInfo {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct HuazhenConfig {
+pub struct HuayuConfig {
     #[serde(default)]
     pub api_key: String,
     #[serde(default = "default_base_url")]
@@ -54,7 +54,7 @@ fn default_base_url() -> String {
     "https://baizor.com".to_string()
 }
 fn default_model() -> String {
-    "huazhen-fable-5".to_string()
+    "huayu-v2".to_string()
 }
 fn default_tool() -> String {
     "codex".to_string()
@@ -69,7 +69,7 @@ fn default_claude_permission_mode() -> String {
     "bypassPermissions".to_string()
 }
 
-impl Default for HuazhenConfig {
+impl Default for HuayuConfig {
     fn default() -> Self {
         Self {
             api_key: String::new(),
@@ -87,35 +87,35 @@ impl Default for HuazhenConfig {
     }
 }
 
-/// Root config directory: $HUAZHEN_CONFIG_DIR or ~/.huazhen/
+/// Root config directory: $HUAYU_CONFIG_DIR or ~/.huayu/
 pub fn config_dir() -> PathBuf {
-    if let Ok(dir) = std::env::var("HUAZHEN_CONFIG_DIR") {
+    if let Ok(dir) = std::env::var("HUAYU_CONFIG_DIR") {
         return PathBuf::from(dir);
     }
     dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join(".huazhen")
+        .join(".huayu")
 }
 
-/// Isolated codex config dir used by huazhen (injected as CODEX_HOME).
+/// Isolated codex config dir used by huayu (injected as CODEX_HOME).
 pub fn codex_home() -> PathBuf {
     config_dir().join("codex")
 }
 
-/// Isolated claude config dir used by huazhen (injected as CLAUDE_CONFIG_DIR).
+/// Isolated claude config dir used by huayu (injected as CLAUDE_CONFIG_DIR).
 pub fn claude_config_dir() -> PathBuf {
     config_dir().join("claude")
 }
 
-pub fn load() -> HuazhenConfig {
+pub fn load() -> HuayuConfig {
     let path = config_dir().join(CONFIG_FILE);
     match std::fs::read_to_string(&path) {
         Ok(text) => serde_json::from_str(&text).unwrap_or_default(),
-        Err(_) => HuazhenConfig::default(),
+        Err(_) => HuayuConfig::default(),
     }
 }
 
-pub fn save(cfg: &HuazhenConfig) -> Result<(), AppError> {
+pub fn save(cfg: &HuayuConfig) -> Result<(), AppError> {
     let dir = config_dir();
     std::fs::create_dir_all(&dir).map_err(AppError::Io)?;
     let text = serde_json::to_string_pretty(cfg)?;
@@ -123,7 +123,7 @@ pub fn save(cfg: &HuazhenConfig) -> Result<(), AppError> {
 }
 
 /// Effective codex model: codex_model overrides default_model when set.
-pub fn effective_codex_model(cfg: &HuazhenConfig) -> &str {
+pub fn effective_codex_model(cfg: &HuayuConfig) -> &str {
     if !cfg.codex_model.is_empty() {
         &cfg.codex_model
     } else {
@@ -132,7 +132,7 @@ pub fn effective_codex_model(cfg: &HuazhenConfig) -> &str {
 }
 
 /// Effective claude model: claude_model overrides default_model when set.
-pub fn effective_claude_model(cfg: &HuazhenConfig) -> &str {
+pub fn effective_claude_model(cfg: &HuayuConfig) -> &str {
     if !cfg.claude_model.is_empty() {
         &cfg.claude_model
     } else {
@@ -140,12 +140,12 @@ pub fn effective_claude_model(cfg: &HuazhenConfig) -> &str {
     }
 }
 
-/// Write the minimal codex config files into ~/.huazhen/codex/.
+/// Write the minimal codex config files into ~/.huayu/codex/.
 ///
 /// Model metadata is sourced from `cfg.model_info` (populated from the server
 /// on login). Built-in values for well-known baizor models are used as a
 /// fallback when the server hasn't provided metadata for a specific model.
-pub fn write_codex_config(cfg: &HuazhenConfig) -> Result<(), AppError> {
+pub fn write_codex_config(cfg: &HuayuConfig) -> Result<(), AppError> {
     let home = codex_home();
     std::fs::create_dir_all(&home).map_err(AppError::Io)?;
 
@@ -154,9 +154,9 @@ pub fn write_codex_config(cfg: &HuazhenConfig) -> Result<(), AppError> {
     // Merge built-in fallbacks with server-provided metadata.
     // Server values win when present; built-ins fill the gap.
     let mut merged: HashMap<String, ModelInfo> = [
-        ("huazhen-v1",      ModelInfo { context_window: 128000, max_output_tokens: 16384 }),
-        ("huazhen-fable-5", ModelInfo { context_window: 128000, max_output_tokens: 16384 }),
-        ("huazhen3.6-35b",  ModelInfo { context_window: 32768,  max_output_tokens: 8192  }),
+        ("huayu-v1",      ModelInfo { context_window: 128000, max_output_tokens: 16384 }),
+        ("huayu-fable-5", ModelInfo { context_window: 128000, max_output_tokens: 16384 }),
+        ("huayu3.6-35b",  ModelInfo { context_window: 32768,  max_output_tokens: 8192  }),
     ]
     .into_iter()
     .map(|(k, v)| (k.to_string(), v))
@@ -196,8 +196,8 @@ pub fn write_codex_config(cfg: &HuazhenConfig) -> Result<(), AppError> {
     Ok(())
 }
 
-/// Write the minimal claude settings into ~/.huazhen/claude/.
-pub fn write_claude_config(cfg: &HuazhenConfig) -> Result<(), AppError> {
+/// Write the minimal claude settings into ~/.huayu/claude/.
+pub fn write_claude_config(cfg: &HuayuConfig) -> Result<(), AppError> {
     let dir = claude_config_dir();
     std::fs::create_dir_all(&dir).map_err(AppError::Io)?;
 
@@ -205,7 +205,7 @@ pub fn write_claude_config(cfg: &HuazhenConfig) -> Result<(), AppError> {
     let model = effective_claude_model(cfg);
 
     // bypassPermissionsModeAccepted=true pre-accepts the --dangerously-skip-permissions
-    // prompt so claude can run non-interactively in huazhen's PTY. Without this,
+    // prompt so claude can run non-interactively in huayu's PTY. Without this,
     // claude refuses with "must be accepted in an interactive session first".
     let settings = serde_json::json!({
         "bypassPermissionsModeAccepted": true,
@@ -223,11 +223,11 @@ pub fn write_claude_config(cfg: &HuazhenConfig) -> Result<(), AppError> {
 
 // ── Test infrastructure ────────────────────────────────────────────────────
 
-/// Process-wide lock for tests that set HUAZHEN_CONFIG_DIR.
+/// Process-wide lock for tests that set HUAYU_CONFIG_DIR.
 #[cfg(test)]
 pub(crate) static CONFIG_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
-/// RAII guard: acquires CONFIG_LOCK, redirects HUAZHEN_CONFIG_DIR to a fresh
+/// RAII guard: acquires CONFIG_LOCK, redirects HUAYU_CONFIG_DIR to a fresh
 /// TempDir, and restores the env var on drop (even if the test panics).
 #[cfg(test)]
 pub(crate) struct TempConfigGuard {
@@ -240,7 +240,7 @@ impl TempConfigGuard {
     pub(crate) fn new() -> Self {
         let lock = CONFIG_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         let dir = tempfile::TempDir::new().expect("tempdir");
-        std::env::set_var("HUAZHEN_CONFIG_DIR", dir.path());
+        std::env::set_var("HUAYU_CONFIG_DIR", dir.path());
         TempConfigGuard { _lock: lock, _dir: dir }
     }
 }
@@ -248,7 +248,7 @@ impl TempConfigGuard {
 #[cfg(test)]
 impl Drop for TempConfigGuard {
     fn drop(&mut self) {
-        std::env::remove_var("HUAZHEN_CONFIG_DIR");
+        std::env::remove_var("HUAYU_CONFIG_DIR");
     }
 }
 
@@ -260,9 +260,9 @@ mod tests {
 
     #[test]
     fn defaults_are_correct() {
-        let cfg = HuazhenConfig::default();
+        let cfg = HuayuConfig::default();
         assert_eq!(cfg.base_url, "https://baizor.com");
-        assert_eq!(cfg.default_model, "huazhen-fable-5");
+        assert_eq!(cfg.default_model, "huayu-v2");
         assert_eq!(cfg.active_tool, "codex");
         assert!(cfg.api_key.is_empty());
         assert!(cfg.codex_full_auto);
@@ -272,14 +272,14 @@ mod tests {
 
     #[test]
     fn effective_model_falls_back_to_default() {
-        let cfg = HuazhenConfig::default();
+        let cfg = HuayuConfig::default();
         assert_eq!(effective_codex_model(&cfg), cfg.default_model);
         assert_eq!(effective_claude_model(&cfg), cfg.default_model);
     }
 
     #[test]
     fn effective_model_uses_tool_specific_when_set() {
-        let cfg = HuazhenConfig {
+        let cfg = HuayuConfig {
             default_model: "fallback".to_string(),
             codex_model: "codex-specific".to_string(),
             claude_model: "claude-specific".to_string(),
@@ -292,7 +292,7 @@ mod tests {
     #[test]
     fn save_load_round_trip() {
         let _g = TempConfigGuard::new();
-        let cfg = HuazhenConfig {
+        let cfg = HuayuConfig {
             api_key: "sk-test-key".to_string(),
             base_url: "https://example.com".to_string(),
             default_model: "gpt-test".to_string(),
@@ -326,7 +326,7 @@ mod tests {
     #[test]
     fn codex_config_writes_model_and_api_key() {
         let _g = TempConfigGuard::new();
-        let cfg = HuazhenConfig {
+        let cfg = HuayuConfig {
             api_key: "sk-codex-key".to_string(),
             default_model: "gpt-5.5".to_string(),
             ..Default::default()
@@ -343,7 +343,7 @@ mod tests {
     #[test]
     fn codex_config_uses_codex_specific_model_when_set() {
         let _g = TempConfigGuard::new();
-        let cfg = HuazhenConfig {
+        let cfg = HuayuConfig {
             api_key: "sk-key".to_string(),
             default_model: "fallback-model".to_string(),
             codex_model: "codex-override".to_string(),
@@ -358,7 +358,7 @@ mod tests {
     #[test]
     fn claude_config_writes_auth_token_base_url_and_model() {
         let _g = TempConfigGuard::new();
-        let cfg = HuazhenConfig {
+        let cfg = HuayuConfig {
             api_key: "sk-claude-key".to_string(),
             base_url: "https://baizor.com".to_string(),
             default_model: "claude-test".to_string(),
@@ -378,7 +378,7 @@ mod tests {
     #[test]
     fn claude_config_uses_claude_specific_model_when_set() {
         let _g = TempConfigGuard::new();
-        let cfg = HuazhenConfig {
+        let cfg = HuayuConfig {
             api_key: "sk-key".to_string(),
             base_url: "https://baizor.com".to_string(),
             default_model: "fallback-model".to_string(),
@@ -392,15 +392,15 @@ mod tests {
     }
 
     #[test]
-    fn codex_config_files_are_under_huazhen_root() {
+    fn codex_config_files_are_under_huayu_root() {
         let _g = TempConfigGuard::new();
-        let cfg = HuazhenConfig { api_key: "key".to_string(), ..Default::default() };
+        let cfg = HuayuConfig { api_key: "key".to_string(), ..Default::default() };
         write_codex_config(&cfg).unwrap();
         let root = config_dir();
         for entry in std::fs::read_dir(codex_home()).unwrap().flatten() {
             assert!(
                 entry.path().starts_with(&root),
-                "{} is outside huazhen root {}",
+                "{} is outside huayu root {}",
                 entry.path().display(),
                 root.display()
             );
@@ -408,15 +408,15 @@ mod tests {
     }
 
     #[test]
-    fn claude_config_files_are_under_huazhen_root() {
+    fn claude_config_files_are_under_huayu_root() {
         let _g = TempConfigGuard::new();
-        let cfg = HuazhenConfig { api_key: "key".to_string(), ..Default::default() };
+        let cfg = HuayuConfig { api_key: "key".to_string(), ..Default::default() };
         write_claude_config(&cfg).unwrap();
         let root = config_dir();
         for entry in std::fs::read_dir(claude_config_dir()).unwrap().flatten() {
             assert!(
                 entry.path().starts_with(&root),
-                "{} is outside huazhen root {}",
+                "{} is outside huayu root {}",
                 entry.path().display(),
                 root.display()
             );

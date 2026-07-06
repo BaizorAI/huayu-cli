@@ -3,7 +3,7 @@ pub mod commands;
 use clap::{Parser, Subcommand};
 
 #[derive(Parser, Debug)]
-#[command(name = "huazhen", about = "华珍 — AI 编程工作台", version)]
+#[command(name = "huayu", about = "华宇 — AI 编程工作台", version)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Commands>,

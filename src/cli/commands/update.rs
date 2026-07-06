@@ -34,7 +34,7 @@ pub fn execute(tools: Vec<&'static str>) {
 
     println!();
     if ok {
-        println!("{}", "  全部完成！运行 `huazhen` 启动。".bright_green());
+        println!("{}", "  全部完成！运行 `huayu` 启动。".bright_green());
         // Refresh tool configs (e.g. codex model_info) after a successful update
         // so that the fix takes effect without requiring a re-login.
         let cfg = crate::config::load();

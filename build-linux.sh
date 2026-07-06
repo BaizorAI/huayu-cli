@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build huazhen for Linux musl in WSL
+# Build huayu for Linux musl in WSL
 # Usage: wsl bash build-linux.sh
 
 set -euo pipefail
@@ -26,27 +26,27 @@ echo "  [2/4] cargo build --release --target x86_64-unknown-linux-musl ..."
 cd "$SCRIPT_DIR"
 cargo build --release --target x86_64-unknown-linux-musl
 
-BINARY="$SCRIPT_DIR/target/x86_64-unknown-linux-musl/release/huazhen"
+BINARY="$SCRIPT_DIR/target/x86_64-unknown-linux-musl/release/huayu"
 VERSION=$("$BINARY" --version 2>&1 | awk '{print $NF}')
 TRIPLE="x86_64-unknown-linux-musl"
 
-echo "  [ok] huazhen $VERSION ($TRIPLE)"
+echo "  [ok] huayu $VERSION ($TRIPLE)"
 
 echo "  [3/4] Packaging tar.gz ..."
 mkdir -p "$RELEASE_DIR"
 TMPDIR=$(mktemp -d)
-cp "$BINARY" "$TMPDIR/huazhen"
-chmod +x "$TMPDIR/huazhen"
-tar -czf "$RELEASE_DIR/huazhen-$VERSION-$TRIPLE.tar.gz" -C "$TMPDIR" huazhen
+cp "$BINARY" "$TMPDIR/huayu"
+chmod +x "$TMPDIR/huayu"
+tar -czf "$RELEASE_DIR/huayu-$VERSION-$TRIPLE.tar.gz" -C "$TMPDIR" huayu
 rm -rf "$TMPDIR"
-echo "$VERSION" > "$RELEASE_DIR/huazhen-version.txt"
-echo "  [ok] huazhen-$VERSION-$TRIPLE.tar.gz"
+echo "$VERSION" > "$RELEASE_DIR/huayu-version.txt"
+echo "  [ok] huayu-$VERSION-$TRIPLE.tar.gz"
 
 echo ""
 echo "  [4/4] Deploying to baizor ..."
-scp "$RELEASE_DIR/huazhen-$VERSION-$TRIPLE.tar.gz" \
-    "$RELEASE_DIR/huazhen-version.txt" \
+scp "$RELEASE_DIR/huayu-$VERSION-$TRIPLE.tar.gz" \
+    "$RELEASE_DIR/huayu-version.txt" \
     baizor:/lucky/NewApi/data/install/
 echo "  [ok] Deployed!"
 echo ""
-echo "  Test: curl -fsSL https://baizor.com/install/huazhen.sh | bash"
+echo "  Test: curl -fsSL https://baizor.com/install/huayu.sh | bash"
