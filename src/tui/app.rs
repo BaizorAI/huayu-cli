@@ -336,8 +336,29 @@ impl App {
                         self.config.default_model = m.clone();
                         self.settings_model_input = m;
                     }
+                    // Apply codex settings
+                    if let Some(m) = outcome.codex.model {
+                        self.config.codex_model = m;
+                    }
+                    if let Some(fa) = outcome.codex.full_auto {
+                        self.config.codex_full_auto = fa;
+                    }
+                    if let Some(e) = outcome.codex.reasoning_effort {
+                        self.config.codex_reasoning_effort = e;
+                    }
+                    // Apply claude settings
+                    if let Some(m) = outcome.claude.model {
+                        self.config.claude_model = m;
+                    }
+                    if let Some(t) = outcome.claude.max_turns {
+                        self.config.claude_max_turns = t;
+                    }
+                    if let Some(p) = outcome.claude.permission_mode {
+                        self.config.claude_permission_mode = p;
+                    }
                     let _ = crate::config::save(&self.config);
                     let _ = crate::config::write_codex_config(&self.config);
+                    let _ = crate::config::write_claude_config(&self.config);
                     self.connection_status = ConnectionStatus::Connected;
                     self.login_overlay = None;
                     self.push_main("✓ 登录成功！直接输入需求，或运行 /update 下载工具".to_string());
@@ -601,15 +622,25 @@ impl App {
             ));
         }
 
+        let codex_model = crate::config::effective_codex_model(&self.config).to_string();
+        let claude_model = crate::config::effective_claude_model(&self.config).to_string();
+        let spawn_model = match self.tool_type {
+            ToolType::Codex => codex_model,
+            ToolType::Claude => claude_model,
+        };
+
         match crate::tool::spawn(
             &self.tool_type,
             &history,
             &input,
             &self.config.api_key,
             &self.config.base_url,
-            &self.config.default_model,
+            &spawn_model,
             &crate::config::codex_home(),
             &crate::config::claude_config_dir(),
+            self.config.codex_full_auto,
+            &self.config.codex_reasoning_effort,
+            self.config.claude_max_turns,
         ) {
             Ok(proc) => {
                 self.task_start = Some(Instant::now());
@@ -622,5 +653,162 @@ impl App {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::{HuazhenConfig, TempConfigGuard};
+
+    fn make_app() -> App {
+        App::new(HuazhenConfig::default())
+    }
+
+    fn make_logged_in_app() -> App {
+        App::new(HuazhenConfig {
+            api_key: "sk-test-key".to_string(),
+            ..Default::default()
+        })
+    }
+
+    // ── History navigation ─────────────────────────────────────────────────
+
+    #[test]
+    fn history_up_from_empty_does_nothing() {
+        let mut app = make_app();
+        app.input = "draft".to_string();
+        app.cursor_pos = 5;
+        app.history_up();
+        assert!(app.history_cursor.is_none());
+        assert_eq!(app.input, "draft");
+    }
+
+    #[test]
+    fn history_up_saves_draft_and_shows_most_recent_entry() {
+        let mut app = make_app();
+        app.input_history = vec!["first".to_string(), "second".to_string()];
+        app.input = "draft".to_string();
+        app.cursor_pos = 5;
+        app.history_up();
+        assert_eq!(app.history_cursor, Some(1));
+        assert_eq!(app.input, "second");
+        assert_eq!(app.input_draft, "draft");
+    }
+
+    #[test]
+    fn history_up_twice_reaches_older_entry() {
+        let mut app = make_app();
+        app.input_history = vec!["first".to_string(), "second".to_string()];
+        app.history_up();
+        app.history_up();
+        assert_eq!(app.history_cursor, Some(0));
+        assert_eq!(app.input, "first");
+    }
+
+    #[test]
+    fn history_up_stops_at_oldest_entry() {
+        let mut app = make_app();
+        app.input_history = vec!["only".to_string()];
+        app.history_up();
+        app.history_up(); // should not go past index 0
+        assert_eq!(app.history_cursor, Some(0));
+        assert_eq!(app.input, "only");
+    }
+
+    #[test]
+    fn history_down_past_newest_restores_draft() {
+        let mut app = make_app();
+        app.input_history = vec!["a".to_string(), "b".to_string()];
+        app.input = "draft".to_string();
+        app.history_up(); // → "b", saves "draft"
+        app.history_down(); // → past newest → restore draft
+        assert!(app.history_cursor.is_none());
+        assert_eq!(app.input, "draft");
+        assert!(app.input_draft.is_empty());
+    }
+
+    #[test]
+    fn history_down_when_not_browsing_does_nothing() {
+        let mut app = make_app();
+        app.input_history = vec!["a".to_string()];
+        app.input = "draft".to_string();
+        app.history_down();
+        assert!(app.history_cursor.is_none());
+        assert_eq!(app.input, "draft");
+    }
+
+    // ── Submit behavior ────────────────────────────────────────────────────
+
+    #[test]
+    fn submit_empty_input_does_nothing() {
+        let mut app = make_app();
+        let lines_before = app.main_lines.len();
+        app.submit();
+        assert_eq!(app.main_lines.len(), lines_before);
+    }
+
+    #[test]
+    fn submit_not_logged_in_shows_login_prompt() {
+        let mut app = make_app();
+        app.input = "analyze project".to_string();
+        app.cursor_pos = app.input.len();
+        app.submit();
+        assert!(
+            app.main_lines.iter().any(|l| l.contains("/login") || l.contains("未登录")),
+            "expected login prompt in output, got: {:?}",
+            app.main_lines
+        );
+        assert!(app.tool_process.is_none());
+    }
+
+    #[test]
+    fn submit_not_logged_in_still_records_input_history() {
+        let mut app = make_app();
+        app.input = "analyze project".to_string();
+        app.cursor_pos = app.input.len();
+        app.submit();
+        assert!(app.input_history.contains(&"analyze project".to_string()));
+        assert!(app.input.is_empty());
+    }
+
+    #[test]
+    fn submit_slash_help_outputs_help_lines() {
+        let mut app = make_logged_in_app();
+        app.input = "/help".to_string();
+        app.cursor_pos = 5;
+        app.submit();
+        assert!(
+            app.main_lines.iter().any(|l| l.contains("可用命令")),
+            "expected help output"
+        );
+    }
+
+    #[test]
+    fn submit_slash_clear_empties_main_lines() {
+        let mut app = make_logged_in_app();
+        app.push_output("existing line");
+        app.input = "/clear".to_string();
+        app.cursor_pos = 6;
+        app.submit();
+        assert!(app.main_lines.is_empty());
+        assert_eq!(app.scroll_offset, 0);
+        assert!(app.auto_scroll);
+    }
+
+    // ── Settings ──────────────────────────────────────────────────────────
+
+    #[test]
+    fn apply_settings_updates_config_and_closes_overlay() {
+        let _cfg = TempConfigGuard::new();
+        let mut app = make_app();
+        app.settings_model_input = "new-model".to_string();
+        app.settings_url_input = "https://new.example.com".to_string();
+        app.show_settings = true;
+        app.apply_settings();
+        assert_eq!(app.config.default_model, "new-model");
+        assert_eq!(app.config.base_url, "https://new.example.com");
+        assert!(!app.show_settings);
+        assert!(app.main_lines.iter().any(|l| l.contains("设置已保存")));
     }
 }

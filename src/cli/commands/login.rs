@@ -1,7 +1,7 @@
 use clap::Args;
 use colored::Colorize;
 
-use crate::config::{self, write_codex_config};
+use crate::config::{self, write_codex_config, write_claude_config};
 use crate::error::AppError;
 use crate::services::login::{LoginOutcome, LoginService, LOGIN_TIMEOUT_SECS};
 
@@ -45,13 +45,40 @@ pub fn execute(args: LoginArgs) -> Result<(), AppError> {
     if let Some(m) = outcome.default_model {
         cfg.default_model = m;
     }
+
+    // Apply codex settings from server (only when server explicitly provides a value)
+    if let Some(m) = outcome.codex.model {
+        cfg.codex_model = m;
+    }
+    if let Some(fa) = outcome.codex.full_auto {
+        cfg.codex_full_auto = fa;
+    }
+    if let Some(e) = outcome.codex.reasoning_effort {
+        cfg.codex_reasoning_effort = e;
+    }
+
+    // Apply claude settings from server (only when server explicitly provides a value)
+    if let Some(m) = outcome.claude.model {
+        cfg.claude_model = m;
+    }
+    if let Some(t) = outcome.claude.max_turns {
+        cfg.claude_max_turns = t;
+    }
+    if let Some(p) = outcome.claude.permission_mode {
+        cfg.claude_permission_mode = p;
+    }
+
     config::save(&cfg)?;
     write_codex_config(&cfg)?;
+    write_claude_config(&cfg)?;
 
     println!();
     println!("{}", "✓ 登录成功！配置已保存。".bright_green().bold());
     println!("  Key: {}", mask_key(&outcome.api_key));
-    println!("  模型: {}", cfg.default_model);
+    let codex_model = config::effective_codex_model(&cfg).to_string();
+    let claude_model = config::effective_claude_model(&cfg).to_string();
+    println!("  Codex 模型: {}", codex_model);
+    println!("  Claude 模型: {}", claude_model);
     println!();
     println!("{}", "运行 `huazhen` 启动 TUI 工作台".dimmed());
 

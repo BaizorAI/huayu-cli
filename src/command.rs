@@ -79,3 +79,102 @@ pub fn help_lines() -> Vec<&'static str> {
         "Alt+Q → 退出程序",
     ]
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_login() {
+        assert!(matches!(parse("/login"), Some(AppCommand::Login)));
+    }
+
+    #[test]
+    fn parse_switch_with_tool_name() {
+        let cmd = parse("/switch codex").unwrap();
+        assert!(matches!(cmd, AppCommand::Switch(s) if s == "codex"));
+    }
+
+    #[test]
+    fn parse_model_with_name() {
+        let cmd = parse("/model gpt-5.5").unwrap();
+        assert!(matches!(cmd, AppCommand::Model(s) if s == "gpt-5.5"));
+    }
+
+    #[test]
+    fn parse_model_without_name_gives_empty_args() {
+        let cmd = parse("/model").unwrap();
+        assert!(matches!(cmd, AppCommand::Model(s) if s.is_empty()));
+    }
+
+    #[test]
+    fn parse_update_no_args_targets_all() {
+        assert!(matches!(parse("/update"), Some(AppCommand::Update(UpdateTarget::All))));
+    }
+
+    #[test]
+    fn parse_install_is_synonym_for_update_all() {
+        assert!(matches!(parse("/install"), Some(AppCommand::Update(UpdateTarget::All))));
+    }
+
+    #[test]
+    fn parse_update_codex() {
+        assert!(matches!(
+            parse("/update codex"),
+            Some(AppCommand::Update(UpdateTarget::Codex))
+        ));
+    }
+
+    #[test]
+    fn parse_update_claude() {
+        assert!(matches!(
+            parse("/update claude"),
+            Some(AppCommand::Update(UpdateTarget::Claude))
+        ));
+    }
+
+    #[test]
+    fn parse_status() {
+        assert!(matches!(parse("/status"), Some(AppCommand::Status)));
+    }
+
+    #[test]
+    fn parse_help_and_question_mark() {
+        assert!(matches!(parse("/help"), Some(AppCommand::Help)));
+        assert!(matches!(parse("/?"), Some(AppCommand::Help)));
+    }
+
+    #[test]
+    fn parse_clear() {
+        assert!(matches!(parse("/clear"), Some(AppCommand::Clear)));
+    }
+
+    #[test]
+    fn parse_quit_synonyms() {
+        assert!(matches!(parse("/quit"), Some(AppCommand::Quit)));
+        assert!(matches!(parse("/exit"), Some(AppCommand::Quit)));
+        assert!(matches!(parse("/q"), Some(AppCommand::Quit)));
+    }
+
+    #[test]
+    fn parse_unknown_command() {
+        let cmd = parse("/foobar").unwrap();
+        assert!(matches!(cmd, AppCommand::Unknown(s) if s == "foobar"));
+    }
+
+    #[test]
+    fn non_command_returns_none() {
+        assert!(parse("hello world").is_none());
+        assert!(parse("").is_none());
+        assert!(parse("analyze my project").is_none());
+    }
+
+    #[test]
+    fn update_target_tool_names() {
+        assert_eq!(UpdateTarget::Codex.tool_names(), vec!["codex"]);
+        assert_eq!(UpdateTarget::Claude.tool_names(), vec!["claude"]);
+        let all = UpdateTarget::All.tool_names();
+        assert!(all.contains(&"codex"));
+        assert!(all.contains(&"claude"));
+    }
+}

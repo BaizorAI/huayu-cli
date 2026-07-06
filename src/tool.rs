@@ -161,6 +161,9 @@ pub fn spawn(
     model: &str,
     codex_home: &PathBuf,
     claude_config_dir: &PathBuf,
+    codex_full_auto: bool,
+    codex_reasoning_effort: &str,
+    claude_max_turns: u32,
 ) -> Result<ToolProcess, AppError> {
     let full_prompt = build_prompt(history, prompt);
     let api_endpoint = format!("{}/v1", base_url.trim_end_matches('/'));
@@ -184,7 +187,6 @@ pub fn spawn(
             // Auth still reads from CODEX_HOME/auth.json.
             c.arg("--ignore-user-config");
             // Codex appends /responses to openai_base_url, so the URL must include /v1.
-            // Without /v1, codex tries wss://baizor.com/responses which returns the HTML frontend.
             let domain = base_url.trim_end_matches('/');
             c.arg("-c");
             c.arg(format!("openai_base_url=\"{}/v1\"", domain));
@@ -192,9 +194,16 @@ pub fn spawn(
             // for a reply in huazhen's non-interactive PTY environment.
             c.arg("-c");
             c.arg("disable_response_storage=true");
+            // Apply reasoning effort if set
+            if !codex_reasoning_effort.is_empty() {
+                c.arg("-c");
+                c.arg(format!("reasoning_effort=\"{}\"", codex_reasoning_effort));
+            }
             c.arg("--model");
             c.arg(model);
-            c.arg("--dangerously-bypass-approvals-and-sandbox");
+            if codex_full_auto {
+                c.arg("--dangerously-bypass-approvals-and-sandbox");
+            }
             c.arg(&full_prompt);
             c.env("CODEX_HOME", codex_home.as_os_str());
             c.env("OPENAI_API_KEY", api_key);
@@ -205,6 +214,10 @@ pub fn spawn(
             let mut c = CommandBuilder::new(tool.binary_path());
             c.arg("--print");
             c.arg("--dangerously-skip-permissions");
+            if claude_max_turns > 0 {
+                c.arg("--max-turns");
+                c.arg(claude_max_turns.to_string());
+            }
             c.arg(&full_prompt);
             c.env("CLAUDE_CONFIG_DIR", claude_config_dir.as_os_str());
             c.env("ANTHROPIC_AUTH_TOKEN", api_key);
@@ -290,4 +303,68 @@ impl Message {
 
 fn strip_ansi(s: &str) -> String {
     strip_ansi_escapes::strip_str(s)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn auth_error_from_401_unauthorized() {
+        assert!(matches!(parse_event("error: 401 Unauthorized"), ToolEvent::AuthError));
+    }
+
+    #[test]
+    fn auth_error_from_invalid_api_key() {
+        assert!(matches!(parse_event("invalid api key provided"), ToolEvent::AuthError));
+    }
+
+    #[test]
+    fn auth_error_from_authentication_failed() {
+        assert!(matches!(parse_event("authentication failed"), ToolEvent::AuthError));
+    }
+
+    #[test]
+    fn network_error_from_connection_refused() {
+        assert!(matches!(parse_event("Connection refused"), ToolEvent::NetworkError));
+    }
+
+    #[test]
+    fn network_error_from_network_error_phrase() {
+        assert!(matches!(parse_event("network error occurred"), ToolEvent::NetworkError));
+    }
+
+    #[test]
+    fn file_written_from_wrote_prefix() {
+        assert!(matches!(parse_event("wrote src/main.rs"), ToolEvent::FileWritten(_)));
+    }
+
+    #[test]
+    fn file_written_from_created_prefix() {
+        assert!(matches!(parse_event("created new file foo.txt"), ToolEvent::FileWritten(_)));
+    }
+
+    #[test]
+    fn test_passed_from_pass_keyword() {
+        assert!(matches!(parse_event("test passed"), ToolEvent::TestPassed));
+    }
+
+    #[test]
+    fn test_passed_from_ok_keyword() {
+        assert!(matches!(parse_event("test ok"), ToolEvent::TestPassed));
+    }
+
+    #[test]
+    fn test_failed_event() {
+        assert!(matches!(
+            parse_event("test failed: assertion error"),
+            ToolEvent::TestFailed(_)
+        ));
+    }
+
+    #[test]
+    fn normal_line_passes_through() {
+        let line = "compiling main.rs";
+        assert!(matches!(parse_event(line), ToolEvent::Line(s) if s == line));
+    }
 }

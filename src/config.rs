@@ -16,6 +16,22 @@ pub struct HuazhenConfig {
     pub default_model: String,
     #[serde(default = "default_tool")]
     pub active_tool: String,
+
+    // ── Codex-specific settings (from server on login) ─────────────────────
+    #[serde(default)]
+    pub codex_model: String,
+    #[serde(default = "default_codex_full_auto")]
+    pub codex_full_auto: bool,
+    #[serde(default = "default_codex_reasoning_effort")]
+    pub codex_reasoning_effort: String,
+
+    // ── Claude-specific settings (from server on login) ────────────────────
+    #[serde(default)]
+    pub claude_model: String,
+    #[serde(default)]
+    pub claude_max_turns: u32,
+    #[serde(default = "default_claude_permission_mode")]
+    pub claude_permission_mode: String,
 }
 
 fn default_base_url() -> String {
@@ -27,6 +43,15 @@ fn default_model() -> String {
 fn default_tool() -> String {
     "codex".to_string()
 }
+fn default_codex_full_auto() -> bool {
+    true
+}
+fn default_codex_reasoning_effort() -> String {
+    "medium".to_string()
+}
+fn default_claude_permission_mode() -> String {
+    "bypassPermissions".to_string()
+}
 
 impl Default for HuazhenConfig {
     fn default() -> Self {
@@ -35,6 +60,12 @@ impl Default for HuazhenConfig {
             base_url: default_base_url(),
             default_model: default_model(),
             active_tool: default_tool(),
+            codex_model: String::new(),
+            codex_full_auto: default_codex_full_auto(),
+            codex_reasoning_effort: default_codex_reasoning_effort(),
+            claude_model: String::new(),
+            claude_max_turns: 0,
+            claude_permission_mode: default_claude_permission_mode(),
         }
     }
 }
@@ -74,18 +105,33 @@ pub fn save(cfg: &HuazhenConfig) -> Result<(), AppError> {
     std::fs::write(dir.join(CONFIG_FILE), text).map_err(AppError::Io)
 }
 
+/// Effective codex model: codex_model overrides default_model when set.
+pub fn effective_codex_model(cfg: &HuazhenConfig) -> &str {
+    if !cfg.codex_model.is_empty() {
+        &cfg.codex_model
+    } else {
+        &cfg.default_model
+    }
+}
+
+/// Effective claude model: claude_model overrides default_model when set.
+pub fn effective_claude_model(cfg: &HuazhenConfig) -> &str {
+    if !cfg.claude_model.is_empty() {
+        &cfg.claude_model
+    } else {
+        &cfg.default_model
+    }
+}
+
 /// Write the minimal codex config files into ~/.huazhen/codex/.
 pub fn write_codex_config(cfg: &HuazhenConfig) -> Result<(), AppError> {
     let home = codex_home();
     std::fs::create_dir_all(&home).map_err(AppError::Io)?;
 
-    // Keep config.toml minimal. The openai base URL is set at spawn time via
-    // `-c openai_base_url="..."` (top-level field, not model_providers.openai which
-    // is reserved). --ignore-user-config is also passed so this file is never loaded.
-    let config_toml = format!("model = \"{}\"\n", cfg.default_model);
+    let model = effective_codex_model(cfg);
+    let config_toml = format!("model = \"{}\"\n", model);
     std::fs::write(home.join("config.toml"), config_toml).map_err(AppError::Io)?;
 
-    // auth.json provides the API key; codex reads this from CODEX_HOME.
     let auth = serde_json::json!({ "OPENAI_API_KEY": cfg.api_key });
     std::fs::write(
         home.join("auth.json"),
@@ -102,14 +148,237 @@ pub fn write_claude_config(cfg: &HuazhenConfig) -> Result<(), AppError> {
     std::fs::create_dir_all(&dir).map_err(AppError::Io)?;
 
     let base = cfg.base_url.trim_end_matches('/');
+    let model = effective_claude_model(cfg);
+
+    // bypassPermissionsModeAccepted=true pre-accepts the --dangerously-skip-permissions
+    // prompt so claude can run non-interactively in huazhen's PTY. Without this,
+    // claude refuses with "must be accepted in an interactive session first".
     let settings = serde_json::json!({
+        "bypassPermissionsModeAccepted": true,
+        "hasCompletedOnboarding": true,
         "env": {
             "ANTHROPIC_AUTH_TOKEN": cfg.api_key,
             "ANTHROPIC_BASE_URL": format!("{}/v1", base),
-            "ANTHROPIC_MODEL": cfg.default_model,
+            "ANTHROPIC_MODEL": model,
         }
     });
     std::fs::write(dir.join("settings.json"), serde_json::to_string_pretty(&settings)?).map_err(AppError::Io)?;
 
     Ok(())
+}
+
+// ── Test infrastructure ────────────────────────────────────────────────────
+
+/// Process-wide lock for tests that set HUAZHEN_CONFIG_DIR.
+#[cfg(test)]
+pub(crate) static CONFIG_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// RAII guard: acquires CONFIG_LOCK, redirects HUAZHEN_CONFIG_DIR to a fresh
+/// TempDir, and restores the env var on drop (even if the test panics).
+#[cfg(test)]
+pub(crate) struct TempConfigGuard {
+    _lock: std::sync::MutexGuard<'static, ()>,
+    _dir: tempfile::TempDir,
+}
+
+#[cfg(test)]
+impl TempConfigGuard {
+    pub(crate) fn new() -> Self {
+        let lock = CONFIG_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        std::env::set_var("HUAZHEN_CONFIG_DIR", dir.path());
+        TempConfigGuard { _lock: lock, _dir: dir }
+    }
+}
+
+#[cfg(test)]
+impl Drop for TempConfigGuard {
+    fn drop(&mut self) {
+        std::env::remove_var("HUAZHEN_CONFIG_DIR");
+    }
+}
+
+// ── Tests ──────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn defaults_are_correct() {
+        let cfg = HuazhenConfig::default();
+        assert_eq!(cfg.base_url, "https://baizor.com");
+        assert_eq!(cfg.default_model, "huazhen-fable-5");
+        assert_eq!(cfg.active_tool, "codex");
+        assert!(cfg.api_key.is_empty());
+        assert!(cfg.codex_full_auto);
+        assert_eq!(cfg.codex_reasoning_effort, "medium");
+        assert_eq!(cfg.claude_permission_mode, "bypassPermissions");
+    }
+
+    #[test]
+    fn effective_model_falls_back_to_default() {
+        let cfg = HuazhenConfig::default();
+        assert_eq!(effective_codex_model(&cfg), cfg.default_model);
+        assert_eq!(effective_claude_model(&cfg), cfg.default_model);
+    }
+
+    #[test]
+    fn effective_model_uses_tool_specific_when_set() {
+        let cfg = HuazhenConfig {
+            default_model: "fallback".to_string(),
+            codex_model: "codex-specific".to_string(),
+            claude_model: "claude-specific".to_string(),
+            ..Default::default()
+        };
+        assert_eq!(effective_codex_model(&cfg), "codex-specific");
+        assert_eq!(effective_claude_model(&cfg), "claude-specific");
+    }
+
+    #[test]
+    fn save_load_round_trip() {
+        let _g = TempConfigGuard::new();
+        let cfg = HuazhenConfig {
+            api_key: "sk-test-key".to_string(),
+            base_url: "https://example.com".to_string(),
+            default_model: "gpt-test".to_string(),
+            active_tool: "claude".to_string(),
+            codex_model: "codex-special".to_string(),
+            codex_full_auto: false,
+            codex_reasoning_effort: "high".to_string(),
+            claude_model: "claude-special".to_string(),
+            claude_max_turns: 10,
+            claude_permission_mode: "acceptEdits".to_string(),
+        };
+        save(&cfg).unwrap();
+        let loaded = load();
+        assert_eq!(loaded.api_key, cfg.api_key);
+        assert_eq!(loaded.codex_model, "codex-special");
+        assert!(!loaded.codex_full_auto);
+        assert_eq!(loaded.codex_reasoning_effort, "high");
+        assert_eq!(loaded.claude_model, "claude-special");
+        assert_eq!(loaded.claude_max_turns, 10);
+        assert_eq!(loaded.claude_permission_mode, "acceptEdits");
+    }
+
+    #[test]
+    fn load_returns_defaults_when_no_file() {
+        let _g = TempConfigGuard::new();
+        let loaded = load();
+        assert_eq!(loaded.base_url, "https://baizor.com");
+        assert!(loaded.api_key.is_empty());
+    }
+
+    #[test]
+    fn codex_config_writes_model_and_api_key() {
+        let _g = TempConfigGuard::new();
+        let cfg = HuazhenConfig {
+            api_key: "sk-codex-key".to_string(),
+            default_model: "gpt-5.5".to_string(),
+            ..Default::default()
+        };
+        write_codex_config(&cfg).unwrap();
+        let home = codex_home();
+        let toml = std::fs::read_to_string(home.join("config.toml")).unwrap();
+        assert!(toml.contains("gpt-5.5"), "config.toml should contain model");
+        let auth: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(home.join("auth.json")).unwrap()).unwrap();
+        assert_eq!(auth["OPENAI_API_KEY"].as_str().unwrap(), "sk-codex-key");
+    }
+
+    #[test]
+    fn codex_config_uses_codex_specific_model_when_set() {
+        let _g = TempConfigGuard::new();
+        let cfg = HuazhenConfig {
+            api_key: "sk-key".to_string(),
+            default_model: "fallback-model".to_string(),
+            codex_model: "codex-override".to_string(),
+            ..Default::default()
+        };
+        write_codex_config(&cfg).unwrap();
+        let toml = std::fs::read_to_string(codex_home().join("config.toml")).unwrap();
+        assert!(toml.contains("codex-override"), "should use codex_model");
+        assert!(!toml.contains("fallback-model"), "should not use default_model");
+    }
+
+    #[test]
+    fn claude_config_writes_auth_token_base_url_and_model() {
+        let _g = TempConfigGuard::new();
+        let cfg = HuazhenConfig {
+            api_key: "sk-claude-key".to_string(),
+            base_url: "https://baizor.com".to_string(),
+            default_model: "claude-test".to_string(),
+            ..Default::default()
+        };
+        write_claude_config(&cfg).unwrap();
+        let raw =
+            std::fs::read_to_string(claude_config_dir().join("settings.json")).unwrap();
+        let val: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        let env = &val["env"];
+        assert_eq!(env["ANTHROPIC_AUTH_TOKEN"].as_str().unwrap(), "sk-claude-key");
+        assert_eq!(env["ANTHROPIC_BASE_URL"].as_str().unwrap(), "https://baizor.com/v1");
+        assert_eq!(env["ANTHROPIC_MODEL"].as_str().unwrap(), "claude-test");
+        assert_eq!(val["bypassPermissionsModeAccepted"].as_bool().unwrap(), true);
+    }
+
+    #[test]
+    fn claude_config_uses_claude_specific_model_when_set() {
+        let _g = TempConfigGuard::new();
+        let cfg = HuazhenConfig {
+            api_key: "sk-key".to_string(),
+            base_url: "https://baizor.com".to_string(),
+            default_model: "fallback-model".to_string(),
+            claude_model: "claude-override".to_string(),
+            ..Default::default()
+        };
+        write_claude_config(&cfg).unwrap();
+        let raw = std::fs::read_to_string(claude_config_dir().join("settings.json")).unwrap();
+        let val: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        assert_eq!(val["env"]["ANTHROPIC_MODEL"].as_str().unwrap(), "claude-override");
+    }
+
+    #[test]
+    fn codex_config_files_are_under_huazhen_root() {
+        let _g = TempConfigGuard::new();
+        let cfg = HuazhenConfig { api_key: "key".to_string(), ..Default::default() };
+        write_codex_config(&cfg).unwrap();
+        let root = config_dir();
+        for entry in std::fs::read_dir(codex_home()).unwrap().flatten() {
+            assert!(
+                entry.path().starts_with(&root),
+                "{} is outside huazhen root {}",
+                entry.path().display(),
+                root.display()
+            );
+        }
+    }
+
+    #[test]
+    fn claude_config_files_are_under_huazhen_root() {
+        let _g = TempConfigGuard::new();
+        let cfg = HuazhenConfig { api_key: "key".to_string(), ..Default::default() };
+        write_claude_config(&cfg).unwrap();
+        let root = config_dir();
+        for entry in std::fs::read_dir(claude_config_dir()).unwrap().flatten() {
+            assert!(
+                entry.path().starts_with(&root),
+                "{} is outside huazhen root {}",
+                entry.path().display(),
+                root.display()
+            );
+        }
+    }
+
+    #[test]
+    fn api_key_masking_in_status_output() {
+        let key = "sk-abcd1234efgh5678";
+        let masked = if key.len() > 8 {
+            format!("sk-{}***{}", &key[..4.min(key.len())], &key[key.len().saturating_sub(4)..])
+        } else {
+            "***".to_string()
+        };
+        assert!(!masked.contains("abcd1234efgh5678"), "full key must not appear");
+        assert!(masked.contains("sk-"), "prefix preserved");
+        assert!(masked.contains("5678"), "last 4 chars preserved");
+    }
 }

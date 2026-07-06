@@ -155,7 +155,6 @@ fn render_help_panel(f: &mut Frame, app: &App, area: Rect) {
         .map(|p| p.display().to_string())
         .unwrap_or_else(|_| "?".to_string());
 
-    // Truncate cwd to fit the panel width (show end of path)
     let max_cwd = area.width.saturating_sub(10) as usize;
     let cwd_display = if cwd.len() > max_cwd && max_cwd > 3 {
         format!("...{}", &cwd[cwd.len().saturating_sub(max_cwd - 3)..])
@@ -164,68 +163,151 @@ fn render_help_panel(f: &mut Frame, app: &App, area: Rect) {
     };
 
     let tool_avail = if app.tool_type.is_available() { "✓" } else { "✗" };
+    let running = app.tool_process.is_some();
 
-    let mut content: Vec<Line> = vec![
-        Line::from(Span::styled(
-            "快捷键",
-            Style::default().fg(theme::TITLE).add_modifier(Modifier::BOLD),
-        )),
-        Line::from(Span::styled(
-            "  Enter   发送/确认",
-            Style::default().fg(theme::DIM),
-        )),
-        Line::from(Span::styled(
-            "  Esc     取消/关闭",
-            Style::default().fg(theme::DIM),
-        )),
-        Line::from(Span::styled(
-            "  ↑/↓    输入历史",
-            Style::default().fg(theme::DIM),
-        )),
-        Line::from(Span::styled(
-            "  PgUp   向上翻页",
-            Style::default().fg(theme::DIM),
-        )),
-        Line::from(Span::styled(
-            "  PgDn   向下/回底",
-            Style::default().fg(theme::DIM),
-        )),
-        Line::from(Span::styled(
-            "  滚轮   上下滚动",
-            Style::default().fg(theme::DIM),
-        )),
-        Line::from(Span::styled(
-            "  Alt+Q  退出",
-            Style::default().fg(theme::DIM),
-        )),
-        Line::from(Span::styled(
-            "  /help  命令列表",
-            Style::default().fg(theme::DIM),
-        )),
-        Line::from(""),
-        Line::from(Span::styled(
-            "当前状态",
-            Style::default().fg(theme::TITLE).add_modifier(Modifier::BOLD),
-        )),
-        Line::from(vec![
-            Span::styled("  工具  ", Style::default().fg(theme::DIM)),
+    let mut content: Vec<Line> = Vec::new();
+
+    // ── Task-in-progress section (shown only when tool is running) ──────────
+    if running {
+        let (elapsed_secs, spinner_frame) = if let Some(start) = app.task_start {
+            let elapsed = start.elapsed();
+            let secs = elapsed.as_secs_f32();
+            let frame = (elapsed.as_millis() / 200 % 4) as usize;
+            (secs, frame)
+        } else {
+            (0.0, 0)
+        };
+
+        const SPINNER: [&str; 4] = ["◐", "◓", "◑", "◒"];
+        let spinner = SPINNER[spinner_frame];
+        let elapsed_str = if elapsed_secs < 60.0 {
+            format!("{:.0}s", elapsed_secs)
+        } else {
+            format!("{:.0}m{:.0}s", elapsed_secs / 60.0, elapsed_secs % 60.0)
+        };
+
+        content.push(Line::from(Span::styled(
+            "任务进行中",
+            Style::default().fg(theme::STATUS_OK).add_modifier(Modifier::BOLD),
+        )));
+        content.push(Line::from(vec![
             Span::styled(
-                format!("{} {}", tool_avail, app.tool_type.as_str()),
+                format!("  {} ", spinner),
+                Style::default().fg(theme::STATUS_OK),
+            ),
+            Span::styled(
+                app.tool_type.as_str(),
                 Style::default().fg(theme::HIGHLIGHT),
             ),
-        ]),
-        Line::from(vec![
-            Span::styled("  模型  ", Style::default().fg(theme::DIM)),
             Span::styled(
-                app.config.default_model.as_str(),
-                Style::default().fg(theme::PROMPT),
+                format!("  [{}]", elapsed_str),
+                Style::default().fg(theme::DIM),
             ),
-        ]),
-        Line::from(vec![
-            Span::styled("  目录  ", Style::default().fg(theme::DIM)),
-            Span::styled(cwd_display, Style::default().fg(theme::DIM)),
-        ]),
-    ];
+        ]));
+
+        // Show last non-empty output lines as a mini preview
+        let preview_lines: Vec<&str> = app
+            .main_lines
+            .iter()
+            .rev()
+            .filter(|l| !l.is_empty() && !l.starts_with("───"))
+            .take(5)
+            .map(|l| l.as_str())
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect();
+
+        if !preview_lines.is_empty() {
+            content.push(Line::from(""));
+            content.push(Line::from(Span::styled(
+                "最近输出",
+                Style::default().fg(theme::TITLE).add_modifier(Modifier::BOLD),
+            )));
+            let max_w = area.width.saturating_sub(4) as usize;
+            for line in preview_lines {
+                let truncated = if line.len() > max_w && max_w > 3 {
+                    format!("{}…", &line[..max_w - 1])
+                } else {
+                    line.to_string()
+                };
+                content.push(Line::from(Span::styled(
+                    format!("  {}", truncated),
+                    Style::default().fg(theme::DIM),
+                )));
+            }
+        }
+
+        content.push(Line::from(""));
+        content.push(Line::from(Span::styled(
+            "────────────────────",
+            Style::default().fg(theme::BORDER),
+        )));
+        content.push(Line::from(""));
+    }
+
+    // ── Shortcuts ───────────────────────────────────────────────────────────
+    content.push(Line::from(Span::styled(
+        "快捷键",
+        Style::default().fg(theme::TITLE).add_modifier(Modifier::BOLD),
+    )));
+    content.push(Line::from(Span::styled(
+        "  Enter   发送/确认",
+        Style::default().fg(theme::DIM),
+    )));
+    content.push(Line::from(Span::styled(
+        "  Esc     取消/关闭",
+        Style::default().fg(theme::DIM),
+    )));
+    content.push(Line::from(Span::styled(
+        "  ↑/↓    输入历史",
+        Style::default().fg(theme::DIM),
+    )));
+    content.push(Line::from(Span::styled(
+        "  PgUp   向上翻页",
+        Style::default().fg(theme::DIM),
+    )));
+    content.push(Line::from(Span::styled(
+        "  PgDn   向下/回底",
+        Style::default().fg(theme::DIM),
+    )));
+    content.push(Line::from(Span::styled(
+        "  滚轮   上下滚动",
+        Style::default().fg(theme::DIM),
+    )));
+    content.push(Line::from(Span::styled(
+        "  Alt+Q  退出",
+        Style::default().fg(theme::DIM),
+    )));
+    content.push(Line::from(Span::styled(
+        "  /help  命令列表",
+        Style::default().fg(theme::DIM),
+    )));
+    content.push(Line::from(""));
+
+    // ── Status ──────────────────────────────────────────────────────────────
+    content.push(Line::from(Span::styled(
+        "当前状态",
+        Style::default().fg(theme::TITLE).add_modifier(Modifier::BOLD),
+    )));
+    content.push(Line::from(vec![
+        Span::styled("  工具  ", Style::default().fg(theme::DIM)),
+        Span::styled(
+            format!("{} {}", tool_avail, app.tool_type.as_str()),
+            Style::default().fg(theme::HIGHLIGHT),
+        ),
+    ]));
+    content.push(Line::from(vec![
+        Span::styled("  模型  ", Style::default().fg(theme::DIM)),
+        Span::styled(
+            app.config.default_model.as_str(),
+            Style::default().fg(theme::PROMPT),
+        ),
+    ]));
+    content.push(Line::from(vec![
+        Span::styled("  目录  ", Style::default().fg(theme::DIM)),
+        Span::styled(cwd_display, Style::default().fg(theme::DIM)),
+    ]));
 
     if !app.recent_commands.is_empty() {
         content.push(Line::from(""));
@@ -241,13 +323,24 @@ fn render_help_panel(f: &mut Frame, app: &App, area: Rect) {
         }
     }
 
+    let border_style = if running {
+        Style::default().fg(theme::STATUS_OK)
+    } else {
+        Style::default().fg(theme::BORDER)
+    };
+    let panel_title = if running {
+        " 任务状态 "
+    } else {
+        " 帮助与参考 "
+    };
+
     f.render_widget(
         Paragraph::new(content)
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .title(Span::styled(" 帮助与参考 ", Style::default().fg(theme::TITLE)))
-                    .border_style(Style::default().fg(theme::BORDER)),
+                    .title(Span::styled(panel_title, Style::default().fg(theme::TITLE)))
+                    .border_style(border_style),
             )
             .wrap(Wrap { trim: true }),
         area,

@@ -18,3 +18,7 @@ Thumbs.db
 # Environment files
 .env
 .env.local
+
+# Built by package*.ps1 / package-linux.sh, deployed by deploy.sh — scripts tracked, binaries not
+/release/*.zip
+/release/*.tar.gz

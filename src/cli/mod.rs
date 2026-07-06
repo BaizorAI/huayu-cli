@@ -15,4 +15,10 @@ pub enum Commands {
     Login(commands::login::LoginArgs),
     /// 查看当前配置与工具状态
     Status,
+    /// 下载/更新 AI 工具（codex、claude）
+    Update {
+        /// 指定工具：codex 或 claude（默认全部）
+        #[arg(default_value = "all")]
+        tool: String,
+    },
 }

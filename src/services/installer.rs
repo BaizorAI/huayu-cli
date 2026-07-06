@@ -4,8 +4,6 @@ use std::sync::mpsc;
 // Pinned tool versions — verified against baizor.com API compatibility.
 // Update only after running integration tests (requires BAIZOR_TEST_API_KEY).
 const CODEX_VERSION: &str = "0.142.5";
-// claude-code is distributed via npm; update to a native binary URL when
-// Anthropic publishes platform binaries to their GitHub releases.
 const CLAUDE_VERSION: &str = "1.0.3";
 
 pub fn tools_dir() -> PathBuf {
@@ -60,22 +58,18 @@ fn target_triple() -> &'static str {
     } else if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
         "aarch64-apple-darwin"
     } else if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
-        "x86_64-unknown-linux-musl"
+        "x86_64-unknown-linux-gnu"
     } else if cfg!(all(target_os = "linux", target_arch = "aarch64")) {
-        "aarch64-unknown-linux-musl"
+        "aarch64-unknown-linux-gnu"
     } else {
         "unsupported"
     }
 }
 
-fn codex_archive_url() -> String {
+fn tool_archive_url(name: &str, version: &str) -> String {
     let triple = target_triple();
     let ext = if cfg!(windows) { "zip" } else { "tar.gz" };
-    // GitHub release assets for openai/codex native Rust binaries.
-    format!(
-        "https://github.com/openai/codex/releases/download/{}/codex-{}.{}",
-        CODEX_VERSION, triple, ext
-    )
+    format!("https://baizor.com/install/{}-{}-{}.{}", name, version, triple, ext)
 }
 
 #[cfg(windows)]
@@ -96,9 +90,9 @@ pub fn download_tools(names: Vec<&'static str>) -> Result<mpsc::Receiver<String>
             .expect("tokio runtime");
         for name in &names {
             match *name {
-                "codex" => rt.block_on(download_codex(&tx, &dir)),
-                "claude" => install_claude_npm(&tx),
-                other => { let _ = tx.send(format!("[error] 未知工具: {}", other)); }
+                "codex"  => rt.block_on(download_tool(&tx, &dir, "codex",  CODEX_VERSION)),
+                "claude" => rt.block_on(download_tool(&tx, &dir, "claude", CLAUDE_VERSION)),
+                other    => { let _ = tx.send(format!("[error] 未知工具: {}", other)); }
             }
         }
         let _ = tx.send("__DONE__".to_string());
@@ -106,17 +100,20 @@ pub fn download_tools(names: Vec<&'static str>) -> Result<mpsc::Receiver<String>
     Ok(rx)
 }
 
-async fn download_codex(tx: &mpsc::Sender<String>, dir: &PathBuf) {
-    let url = codex_archive_url();
-    let _ = tx.send(format!("[下载] codex {} ...", CODEX_VERSION));
+/// Download a pkg-compiled binary from baizor.com; fall back to npm if unavailable.
+async fn download_tool(tx: &mpsc::Sender<String>, dir: &PathBuf, name: &'static str, version: &'static str) {
+    let url = tool_archive_url(name, version);
+    let _ = tx.send(format!("[下载] {} {} ...", name, version));
     let resp = match reqwest::get(&url).await {
         Ok(r) if r.status().is_success() => r,
         Ok(r) => {
-            let _ = tx.send(format!("[错误] HTTP {} — 请检查网络或版本号", r.status()));
+            let _ = tx.send(format!("[提示] baizor 暂无 {} 二进制 (HTTP {})，改用 npm ...", name, r.status()));
+            install_tool_npm(tx, name, npm_package(name), version);
             return;
         }
         Err(e) => {
-            let _ = tx.send(format!("[错误] 网络请求失败: {}", e));
+            let _ = tx.send(format!("[提示] 下载失败 ({})，改用 npm ...", e));
+            install_tool_npm(tx, name, npm_package(name), version);
             return;
         }
     };
@@ -128,12 +125,15 @@ async fn download_codex(tx: &mpsc::Sender<String>, dir: &PathBuf) {
         }
     };
     let _ = tx.send(format!("[解压] {} KB ...", bytes.len() / 1024));
-    let binary_name = if cfg!(windows) { "codex.exe" } else { "codex" };
-    match extract_binary(&bytes, dir, binary_name) {
-        Ok(path) => {
-            set_executable(&path);
-            let _ = std::fs::write(dir.join("codex.version"), CODEX_VERSION);
-            let _ = tx.send(format!("[完成] codex {} -> {}", CODEX_VERSION, path.display()));
+    match extract_bundle(&bytes, dir) {
+        Ok(()) => {
+            let _ = std::fs::write(dir.join(format!("{}.version", name)), version);
+            #[cfg(unix)]
+            ensure_executable(dir, name);
+            let bin_desc = local_binary(name)
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|| "installed".to_string());
+            let _ = tx.send(format!("[完成] {} {} -> {}", name, version, bin_desc));
         }
         Err(e) => {
             let _ = tx.send(format!("[错误] 解压失败: {}", e));
@@ -141,15 +141,22 @@ async fn download_codex(tx: &mpsc::Sender<String>, dir: &PathBuf) {
     }
 }
 
-fn install_claude_npm(tx: &mpsc::Sender<String>) {
+fn npm_package(name: &str) -> &'static str {
+    match name {
+        "claude" => "@anthropic-ai/claude-code",
+        _        => "@openai/codex",
+    }
+}
+
+fn install_tool_npm(tx: &mpsc::Sender<String>, name: &str, pkg: &str, version: &'static str) {
     use std::io::BufRead;
     use std::process::{Command, Stdio};
-    let _ = tx.send(format!("[安装] claude {} (via npm) ...", CLAUDE_VERSION));
+    let _ = tx.send(format!("[安装] {}@{} (via npm) ...", pkg, version));
     let prefix = tools_dir();
     let prefix_str = prefix.to_string_lossy().into_owned();
-    let pkg = format!("@anthropic-ai/claude-code@{}", CLAUDE_VERSION);
+    let pkg_ver = format!("{}@{}", pkg, version);
     let mut child = match Command::new(NPM)
-        .args(["install", "--prefix", &prefix_str, &pkg])
+        .args(["install", "--prefix", &prefix_str, &pkg_ver])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -157,7 +164,7 @@ fn install_claude_npm(tx: &mpsc::Sender<String>) {
         Ok(c) => c,
         Err(e) => {
             let _ = tx.send(format!("[错误] 找不到 npm: {}", e));
-            let _ = tx.send("  claude 需要 Node.js — 请从 https://nodejs.org 安装".to_string());
+            let _ = tx.send("  需要 Node.js — 请从 https://nodejs.org 安装".to_string());
             return;
         }
     };
@@ -184,8 +191,8 @@ fn install_claude_npm(tx: &mpsc::Sender<String>) {
     }
     match child.wait() {
         Ok(s) if s.success() => {
-            let _ = std::fs::write(tools_dir().join("claude.version"), CLAUDE_VERSION);
-            let _ = tx.send(format!("[完成] claude {} 已安装", CLAUDE_VERSION));
+            let _ = std::fs::write(tools_dir().join(format!("{}.version", name)), version);
+            let _ = tx.send(format!("[完成] {} {} 已安装", name, version));
         }
         Ok(s) => {
             let _ = tx.send(format!("[错误] npm 安装失败 (exit {})", s.code().unwrap_or(-1)));
@@ -196,52 +203,120 @@ fn install_claude_npm(tx: &mpsc::Sender<String>) {
     }
 }
 
-// Extract the named binary from a zip archive (Windows).
-#[cfg(windows)]
-fn extract_binary(data: &[u8], dest: &PathBuf, binary_name: &str) -> Result<PathBuf, String> {
-    let cursor = std::io::Cursor::new(data);
-    let mut archive = zip::ZipArchive::new(cursor).map_err(|e| e.to_string())?;
-    let out_path = dest.join(binary_name);
-    let mut found = false;
-    for i in 0..archive.len() {
-        let mut file = archive.by_index(i).map_err(|e| e.to_string())?;
-        let base = file.name().rsplit('/').next().unwrap_or("").to_string();
-        if base.eq_ignore_ascii_case(binary_name) {
-            let mut out = std::fs::File::create(&out_path).map_err(|e| e.to_string())?;
-            std::io::copy(&mut file, &mut out).map_err(|e| e.to_string())?;
-            found = true;
-            break;
+// Ensure the launcher script and node binary are executable after extraction.
+#[cfg(unix)]
+fn ensure_executable(dir: &PathBuf, name: &str) {
+    use std::os::unix::fs::PermissionsExt;
+    let targets = [
+        dir.join("node"),
+        dir.join("node_modules").join(".bin").join(name),
+    ];
+    for path in &targets {
+        if path.exists() {
+            let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755));
         }
     }
-    if found { Ok(out_path) } else { Err(format!("archive does not contain {}", binary_name)) }
 }
 
-// Extract the named binary from a tar.gz archive (macOS/Linux).
+// Extract all files from a zip archive, preserving directory structure (Windows).
+#[cfg(windows)]
+fn extract_bundle(data: &[u8], dest: &PathBuf) -> Result<(), String> {
+    let cursor = std::io::Cursor::new(data);
+    let mut archive = zip::ZipArchive::new(cursor).map_err(|e| e.to_string())?;
+    for i in 0..archive.len() {
+        let mut file = archive.by_index(i).map_err(|e| e.to_string())?;
+        let rel = file.name().replace('/', &std::path::MAIN_SEPARATOR.to_string());
+        let out_path = dest.join(&rel);
+        if file.name().ends_with('/') {
+            std::fs::create_dir_all(&out_path).map_err(|e| e.to_string())?;
+        } else {
+            if let Some(parent) = out_path.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+            }
+            let mut out = std::fs::File::create(&out_path).map_err(|e| e.to_string())?;
+            std::io::copy(&mut file, &mut out).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
+}
+
+// Extract all files from a tar.gz archive (macOS/Linux).
 #[cfg(not(windows))]
-fn extract_binary(data: &[u8], dest: &PathBuf, binary_name: &str) -> Result<PathBuf, String> {
+fn extract_bundle(data: &[u8], dest: &PathBuf) -> Result<(), String> {
     use flate2::read::GzDecoder;
     use tar::Archive;
     let gz = GzDecoder::new(data);
     let mut archive = Archive::new(gz);
-    let out_path = dest.join(binary_name);
-    for entry in archive.entries().map_err(|e| e.to_string())? {
-        let mut entry = entry.map_err(|e| e.to_string())?;
-        let is_match = entry.path().ok().and_then(|p| {
-            p.file_name().and_then(|n| n.to_str()).map(|n| n == binary_name)
-        }).unwrap_or(false);
-        if is_match {
-            entry.unpack(&out_path).map_err(|e| e.to_string())?;
-            return Ok(out_path);
-        }
+    archive.unpack(dest).map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::TempConfigGuard;
+
+    #[test]
+    fn local_binary_returns_bundled_binary_when_present() {
+        let _cfg = TempConfigGuard::new();
+        let dir = tools_dir();
+        std::fs::create_dir_all(&dir).unwrap();
+        let binary_name = if cfg!(windows) { "codex.exe" } else { "codex" };
+        let expected = dir.join(binary_name);
+        std::fs::write(&expected, b"fake binary").unwrap();
+        assert_eq!(local_binary("codex"), Some(expected));
     }
-    Err(format!("archive does not contain {}", binary_name))
-}
 
-#[cfg(unix)]
-fn set_executable(path: &PathBuf) {
-    use std::os::unix::fs::PermissionsExt;
-    let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755));
-}
+    #[test]
+    fn local_binary_returns_none_when_tools_dir_is_empty() {
+        let _cfg = TempConfigGuard::new();
+        std::fs::create_dir_all(tools_dir()).unwrap();
+        assert!(local_binary("codex").is_none());
+    }
 
-#[cfg(not(unix))]
-fn set_executable(_path: &PathBuf) {}
+    #[test]
+    fn local_binary_returns_none_when_tools_dir_absent() {
+        let _cfg = TempConfigGuard::new();
+        // tools_dir does not exist at all
+        assert!(local_binary("codex").is_none());
+    }
+
+    #[test]
+    fn is_current_version_true_when_version_file_matches() {
+        let _cfg = TempConfigGuard::new();
+        let dir = tools_dir();
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("codex.version"), CODEX_VERSION).unwrap();
+        assert!(is_current_version("codex"));
+    }
+
+    #[test]
+    fn is_current_version_false_when_version_file_is_stale() {
+        let _cfg = TempConfigGuard::new();
+        let dir = tools_dir();
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("codex.version"), "0.0.1").unwrap();
+        assert!(!is_current_version("codex"));
+    }
+
+    #[test]
+    fn is_current_version_false_when_version_file_absent() {
+        let _cfg = TempConfigGuard::new();
+        std::fs::create_dir_all(tools_dir()).unwrap();
+        assert!(!is_current_version("codex"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn local_binary_requires_exe_suffix_on_windows() {
+        let _cfg = TempConfigGuard::new();
+        let dir = tools_dir();
+        std::fs::create_dir_all(&dir).unwrap();
+        // Without .exe should not be found
+        std::fs::write(dir.join("codex"), b"fake").unwrap();
+        assert!(local_binary("codex").is_none());
+        // With .exe should be found
+        let with_ext = dir.join("codex.exe");
+        std::fs::write(&with_ext, b"fake").unwrap();
+        assert_eq!(local_binary("codex"), Some(with_ext));
+    }
+}

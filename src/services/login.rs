@@ -4,10 +4,26 @@ use std::time::Duration;
 pub const LOGIN_TIMEOUT_SECS: u64 = 300;
 const POLL_INTERVAL_SECS: u64 = 2;
 
+#[derive(Debug, Clone, Default)]
+pub struct CodexSettings {
+    pub model: Option<String>,
+    pub full_auto: Option<bool>,
+    pub reasoning_effort: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ClaudeSettings {
+    pub model: Option<String>,
+    pub max_turns: Option<u32>,
+    pub permission_mode: Option<String>,
+}
+
 #[derive(Debug, Clone)]
 pub struct LoginOutcome {
     pub api_key: String,
     pub default_model: Option<String>,
+    pub codex: CodexSettings,
+    pub claude: ClaudeSettings,
 }
 
 #[derive(Deserialize)]
@@ -15,7 +31,21 @@ struct PollData {
     status: String,
     key: Option<String>,
     #[serde(default)]
-    default_model: Option<String>,
+    model: Option<String>,
+    // codex fields
+    #[serde(default)]
+    codex_model: Option<String>,
+    #[serde(default)]
+    codex_full_auto: Option<bool>,
+    #[serde(default)]
+    codex_reasoning_effort: Option<String>,
+    // claude fields
+    #[serde(default)]
+    claude_model: Option<String>,
+    #[serde(default)]
+    claude_max_turns: Option<u32>,
+    #[serde(default)]
+    claude_permission_mode: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -61,8 +91,18 @@ impl LoginService {
                                     return Ok(LoginOutcome {
                                         api_key: key,
                                         default_model: data
-                                            .default_model
+                                            .model
                                             .filter(|v| !v.is_empty()),
+                                        codex: CodexSettings {
+                                            model: data.codex_model.filter(|v| !v.is_empty()),
+                                            full_auto: data.codex_full_auto,
+                                            reasoning_effort: data.codex_reasoning_effort.filter(|v| !v.is_empty()),
+                                        },
+                                        claude: ClaudeSettings {
+                                            model: data.claude_model.filter(|v| !v.is_empty()),
+                                            max_turns: data.claude_max_turns,
+                                            permission_mode: data.claude_permission_mode.filter(|v| !v.is_empty()),
+                                        },
                                     });
                                 }
                             }

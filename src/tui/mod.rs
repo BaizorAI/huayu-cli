@@ -46,9 +46,10 @@ fn run_loop(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut app = App::new(config);
 
-    // Always rewrite codex config on startup to pick up any format changes
+    // Always rewrite tool configs on startup to pick up any format changes.
     if !app.config.api_key.is_empty() {
         let _ = crate::config::write_codex_config(&app.config);
+        let _ = crate::config::write_claude_config(&app.config);
     }
 
     // Open login overlay immediately if not yet logged in
