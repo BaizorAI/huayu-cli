@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bash
+#!/usr/bin/env bash
 # huayu Linux installer
 # Usage: curl -fsSL https://baizor.com/install/huayu.sh | bash
 

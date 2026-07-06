@@ -1,4 +1,4 @@
-﻿# huayu Windows installer
+# huayu Windows installer
 # Usage: irm https://baizor.com/install/huayu.ps1 | iex
 #
 # What this script does:

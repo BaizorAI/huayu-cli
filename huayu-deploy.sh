@@ -55,23 +55,17 @@ echo ""
 echo -e "  \033[1;37mhuayu $VERSION — 编译 & 部署\033[0m"
 echo "  ─────────────────────────────────────────────────────"
 
-# ── 1. Windows 编译 ──────────────────────────────────────────────────────────
+# ── 1+2. Windows 编译 + 打包（全部交给 PowerShell，避免 WSL cargo 产出 Linux 二进制）──
 
 if [ "$SKIP_WIN" = false ]; then
-    step "Windows 编译 (cargo build --release)"
-    cargo build --release || fail "cargo build 失败"
-    ok "huayu.exe"
+    step "Windows 编译 + 打包 (package.ps1)"
+    powershell.exe -NonInteractive -ExecutionPolicy Bypass -File package.ps1 \
+        || fail "package.ps1 失败"
 else
-    warn "跳过 Windows 编译 (--skip-win)"
+    step "Windows 打包 (package.ps1 -SkipBuild)"
+    powershell.exe -NonInteractive -ExecutionPolicy Bypass -File package.ps1 -SkipBuild \
+        || fail "package.ps1 失败"
 fi
-
-# ── 2. Windows 打包 ──────────────────────────────────────────────────────────
-
-step "Windows 打包 (package.ps1 -SkipBuild)"
-# Use -File with just the filename (resolved relative to CWD by PowerShell).
-# Avoids MSYS backslash-mangling of absolute paths.
-powershell.exe -NonInteractive -ExecutionPolicy Bypass -File package.ps1 -SkipBuild \
-    || fail "package.ps1 失败"
 ok "huayu-x86_64-pc-windows-msvc.zip"
 
 # ── 3. Linux 编译 ────────────────────────────────────────────────────────────
