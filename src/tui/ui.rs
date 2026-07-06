@@ -156,8 +156,11 @@ fn render_help_panel(f: &mut Frame, app: &App, area: Rect) {
         .unwrap_or_else(|_| "?".to_string());
 
     let max_cwd = area.width.saturating_sub(10) as usize;
-    let cwd_display = if cwd.len() > max_cwd && max_cwd > 3 {
-        format!("...{}", &cwd[cwd.len().saturating_sub(max_cwd - 3)..])
+    let cwd_char_count = cwd.chars().count();
+    let cwd_display = if cwd_char_count > max_cwd && max_cwd > 3 {
+        let keep = max_cwd - 3;
+        let start = cwd.char_indices().nth(cwd_char_count - keep).map(|(i, _)| i).unwrap_or(0);
+        format!("...{}", &cwd[start..])
     } else {
         cwd
     };

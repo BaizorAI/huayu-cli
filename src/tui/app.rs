@@ -615,7 +615,8 @@ impl App {
 
         let history = self.messages.clone();
         self.messages.push(Message::user(&input));
-        let preview = &input[..input.len().min(60)];
+        let preview_end = input.char_indices().nth(60).map(|(i, _)| i).unwrap_or(input.len());
+        let preview = &input[..preview_end];
         self.push_main(format!("─── {} ▶ {} ───", self.tool_type.as_str(), preview));
 
         {
