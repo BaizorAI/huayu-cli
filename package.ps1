@@ -95,6 +95,9 @@ if ($claudeFiles.Count -gt 0) {
 
 # ── zip → release\ ─────────────────────────────────────────────────────────
 
+# Kill any running huazhen instances so the exe isn't locked during zipping.
+Get-Process -Name huazhen -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+
 New-Item -ItemType Directory -Path $ReleaseDir -Force | Out-Null
 Step "Creating $ZipName ..."
 if (Test-Path $ZipOut) { Remove-Item $ZipOut -Force }

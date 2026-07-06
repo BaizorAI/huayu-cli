@@ -226,8 +226,10 @@ fn render_help_panel(f: &mut Frame, app: &App, area: Rect) {
             )));
             let max_w = area.width.saturating_sub(4) as usize;
             for line in preview_lines {
-                let truncated = if line.len() > max_w && max_w > 3 {
-                    format!("{}…", &line[..max_w - 1])
+                let char_count = line.chars().count();
+                let truncated = if char_count > max_w && max_w > 3 {
+                    let end = line.char_indices().nth(max_w - 1).map(|(i, _)| i).unwrap_or(line.len());
+                    format!("{}…", &line[..end])
                 } else {
                     line.to_string()
                 };
