@@ -41,6 +41,20 @@ impl ToolType {
         if let Some(local) = crate::services::installer::local_binary(self.binary()) {
             return local;
         }
+        // Fallback: search PATH. On Windows, prefer .cmd/.exe wrappers
+        // over bare script files (CreateProcessW cannot execute them).
+        #[cfg(windows)]
+        {
+            for ext in ["cmd", "exe", "ps1"] {
+                let name_ext = format!("{}.{}", self.binary(), ext);
+                if let Ok(found) = which::which(&name_ext) {
+                    return found;
+                }
+            }
+        }
+        if let Ok(found) = which::which(self.binary()) {
+            return found;
+        }
         PathBuf::from(self.binary())
     }
 
@@ -189,7 +203,15 @@ pub fn spawn(
 
     let cmd = match tool {
         ToolType::Codex => {
-            let mut c = CommandBuilder::new(tool.binary_path());
+            let bin = tool.binary_path();
+            let mut c = if cfg!(windows) && bin.extension().is_some_and(|e| e == "cmd") {
+                let mut c = CommandBuilder::new("cmd.exe");
+                c.arg("/c");
+                c.arg(&bin);
+                c
+            } else {
+                CommandBuilder::new(bin)
+            };
             c.arg("exec");
             // Codex appends /responses to openai_base_url, so the URL must include /v1.
             let domain = base_url.trim_end_matches('/');
@@ -218,7 +240,15 @@ pub fn spawn(
             c
         }
         ToolType::Claude => {
-            let mut c = CommandBuilder::new(tool.binary_path());
+            let bin = tool.binary_path();
+            let mut c = if cfg!(windows) && bin.extension().is_some_and(|e| e == "cmd") {
+                let mut c = CommandBuilder::new("cmd.exe");
+                c.arg("/c");
+                c.arg(&bin);
+                c
+            } else {
+                CommandBuilder::new(bin)
+            };
             c.arg("--print");
             c.arg("--dangerously-skip-permissions");
             c.arg("--model");
@@ -233,8 +263,12 @@ pub fn spawn(
             // Claude Code appends /v1 internally — pass the bare base URL.
             c.env("ANTHROPIC_BASE_URL", base_url.trim_end_matches('/'));
             c.env("ANTHROPIC_MODEL", model);
+            // Claude Code requires a POSIX shell. On Windows, always set SHELL
+            // to a discovered bash — even if the parent already has one — because
+            // portable_pty may not inherit the parent environment on all code paths.
             #[cfg(windows)]
-            if std::env::var_os("SHELL").is_none() {
+            {
+                let mut shell_set = false;
                 for candidate in [
                     r"C:\Program Files\Git\bin\bash.exe",
                     r"C:\Program Files\Git\usr\bin\bash.exe",
@@ -244,7 +278,14 @@ pub fn spawn(
                     let shell = std::path::Path::new(candidate);
                     if shell.exists() {
                         c.env("SHELL", shell.as_os_str());
+                        shell_set = true;
                         break;
+                    }
+                }
+                if !shell_set {
+                    // Last resort: look for bash on PATH
+                    if let Ok(bash) = which::which("bash") {
+                        c.env("SHELL", bash.as_os_str());
                     }
                 }
             }
@@ -260,6 +301,7 @@ pub fn spawn(
     let binary_path_str = tool.binary_path().display().to_string();
     let base_url_str = base_url.to_string();
     let model_str = model.to_string();
+    let shell_str = std::env::var("SHELL").unwrap_or_else(|_| "(not set)".to_string());
 
     let mut child = slave.spawn_command(cmd).map_err(|e| {
         let s = e.to_string().to_lowercase();
@@ -304,6 +346,7 @@ pub fn spawn(
             let _ = writeln!(f, "  binary: {}", binary_path_str);
             let _ = writeln!(f, "  model:  {}", model_str);
             let _ = writeln!(f, "  base:   {}", base_url_str);
+            let _ = writeln!(f, "  shell:  {}", shell_str);
             let _ = writeln!(f, "  pid:    {:?}", process_id);
         }
 

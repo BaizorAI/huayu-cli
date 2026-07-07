@@ -268,14 +268,33 @@ pub fn write_claude_config(cfg: &HuayuConfig) -> Result<(), AppError> {
 
     // ANTHROPIC_BASE_URL must NOT include "/v1" — Claude Code appends it internally.
     // Using "https://example.com/v1" would produce "https://example.com/v1/v1/messages".
+    let mut env_map = serde_json::Map::new();
+    env_map.insert("ANTHROPIC_AUTH_TOKEN".into(), serde_json::Value::String(cfg.api_key.clone()));
+    env_map.insert("ANTHROPIC_BASE_URL".into(), serde_json::Value::String(base.to_string()));
+    env_map.insert("ANTHROPIC_MODEL".into(), serde_json::Value::String(model.to_string()));
+
+    // Claude Code requires a POSIX shell on Windows. Embed SHELL in settings.json
+    // so it's available regardless of how the process is launched.
+    #[cfg(windows)]
+    {
+        let shells = [
+            r"C:\Program Files\Git\bin\bash.exe",
+            r"C:\Program Files\Git\usr\bin\bash.exe",
+            r"C:\msys64\usr\bin\bash.exe",
+            r"C:\cygwin64\bin\bash.exe",
+        ];
+        for candidate in shells {
+            if std::path::Path::new(candidate).exists() {
+                env_map.insert("SHELL".into(), serde_json::Value::String(candidate.to_string()));
+                break;
+            }
+        }
+    }
+
     let settings = serde_json::json!({
         "bypassPermissionsModeAccepted": true,
         "hasCompletedOnboarding": true,
-        "env": {
-            "ANTHROPIC_AUTH_TOKEN": cfg.api_key,
-            "ANTHROPIC_BASE_URL": base,
-            "ANTHROPIC_MODEL": model,
-        }
+        "env": env_map,
     });
     std::fs::write(dir.join("settings.json"), serde_json::to_string_pretty(&settings)?).map_err(AppError::Io)?;
 
