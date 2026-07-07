@@ -179,8 +179,7 @@ pub fn write_codex_config(cfg: &HuayuConfig) -> Result<(), AppError> {
     let mut config_toml = format!("model = \"{model}\"\n");
 
     // Provider config — points codex at the baizor API gateway.
-    // wire_api = "chat" ensures standard Chat Completions format
-    // (avoids Responses API's "developer" role which the gateway rejects).
+    // wire_api = "responses" uses the Responses API format (required by codex >= v0.142).
     let base = cfg.base_url.trim_end_matches('/');
     config_toml.push_str(&format!(
         "model_provider = \"custom\"\n\
@@ -188,7 +187,7 @@ pub fn write_codex_config(cfg: &HuayuConfig) -> Result<(), AppError> {
          [model_providers.custom]\n\
          name = \"huayu\"\n\
          base_url = \"{base}/v1\"\n\
-         wire_api = \"chat\"\n\
+         wire_api = \"responses\"\n\
          requires_openai_auth = true\n"
     ));
 
