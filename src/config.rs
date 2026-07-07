@@ -154,9 +154,9 @@ pub fn write_codex_config(cfg: &HuayuConfig) -> Result<(), AppError> {
     // Merge built-in fallbacks with server-provided metadata.
     // Server values win when present; built-ins fill the gap.
     let mut merged: HashMap<String, ModelInfo> = [
-        ("huayu-v1",      ModelInfo { context_window: 128000, max_output_tokens: 16384 }),
-        ("huayu-fable-5", ModelInfo { context_window: 128000, max_output_tokens: 16384 }),
-        ("huayu3.6-35b",  ModelInfo { context_window: 32768,  max_output_tokens: 8192  }),
+        ("huayu-v2",       ModelInfo { context_window: 128000, max_output_tokens: 16384 }),
+        ("huayu-v2-max",   ModelInfo { context_window: 128000, max_output_tokens: 16384 }),
+        ("huayu-v2-flash", ModelInfo { context_window: 32768,  max_output_tokens: 8192  }),
     ]
     .into_iter()
     .map(|(k, v)| (k.to_string(), v))
@@ -177,6 +177,21 @@ pub fn write_codex_config(cfg: &HuayuConfig) -> Result<(), AppError> {
     entries.sort_by(|a, b| a.0.cmp(&b.0));
 
     let mut config_toml = format!("model = \"{model}\"\n");
+
+    // Provider config — points codex at the baizor API gateway.
+    // wire_api = "chat" ensures standard Chat Completions format
+    // (avoids Responses API's "developer" role which the gateway rejects).
+    let base = cfg.base_url.trim_end_matches('/');
+    config_toml.push_str(&format!(
+        "model_provider = \"custom\"\n\
+         \n\
+         [model_providers.custom]\n\
+         name = \"huayu\"\n\
+         base_url = \"{base}/v1\"\n\
+         wire_api = \"chat\"\n\
+         requires_openai_auth = true\n"
+    ));
+
     for (name, info) in &entries {
         config_toml.push_str(&format!(
             "\n[model_info.\"{}\"]\ncontext_window = {}\nmax_output_tokens = {}\n",
@@ -346,6 +361,9 @@ mod tests {
         let home = codex_home();
         let toml = std::fs::read_to_string(home.join("config.toml")).unwrap();
         assert!(toml.contains("gpt-5.5"), "config.toml should contain model");
+        assert!(toml.contains("model_provider = \"custom\""), "config.toml should contain provider");
+        assert!(toml.contains("base_url = \"https://baizor.com/v1\""), "config.toml should contain base_url");
+        assert!(toml.contains("wire_api = \"chat\""), "config.toml should contain wire_api");
         let auth: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(home.join("auth.json")).unwrap()).unwrap();
         assert_eq!(auth["OPENAI_API_KEY"].as_str().unwrap(), "sk-codex-key");

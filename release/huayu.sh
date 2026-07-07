@@ -89,15 +89,15 @@ export PATH="$BIN_DIR:$PATH"
 mkdir -p "$HOME/.codex"
 if [ ! -f "$HOME/.codex/config.toml" ]; then
     cat > "$HOME/.codex/config.toml" << 'CODEX_CONFIG'
-[model_info."huayu-v1"]
+[model_info."huayu-v2"]
 context_window = 128000
 max_output_tokens = 16384
 
-[model_info."huayu-fable-5"]
+[model_info."huayu-v2-max"]
 context_window = 128000
 max_output_tokens = 16384
 
-[model_info."huayu3.6-35b"]
+[model_info."huayu-v2-flash"]
 context_window = 32768
 max_output_tokens = 8192
 CODEX_CONFIG
