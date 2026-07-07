@@ -22,8 +22,8 @@ need_cmd tar
 # ── arch ───────────────────────────────────────────────────────────────────
 ARCH=$(uname -m)
 case "$ARCH" in
-    x86_64)         TRIPLE="x86_64-unknown-linux-gnu" ;;
-    aarch64|arm64)  TRIPLE="aarch64-unknown-linux-gnu" ;;
+    x86_64)         TRIPLE_GNU="x86_64-unknown-linux-gnu"; TRIPLE_MUSL="x86_64-unknown-linux-musl" ;;
+    aarch64|arm64)  TRIPLE_GNU="aarch64-unknown-linux-gnu"; TRIPLE_MUSL="aarch64-unknown-linux-musl" ;;
     *) fail "不支持的架构: $ARCH" ;;
 esac
 
@@ -39,10 +39,16 @@ ok "最新版本: $VERSION"
 # ── huayu binary ─────────────────────────────────────────────────────────
 mkdir -p "$BIN_DIR" "$TOOLS_DIR"
 
-step "下载 huayu-$VERSION-$TRIPLE.tar.gz ..."
-curl -fsSL "$BASE_URL/huayu-$VERSION-$TRIPLE.tar.gz" | tar -xz -C "$BIN_DIR"
+# Try musl (static) first, fall back to gnu (dynamic)
+step "下载 huayu $VERSION ..."
+if curl -fsSL "$BASE_URL/huayu-$VERSION-$TRIPLE_MUSL.tar.gz" 2>/dev/null | tar -xz -C "$BIN_DIR"; then
+    ok "huayu (musl)  ->  $BIN_DIR"
+elif curl -fsSL "$BASE_URL/huayu-$VERSION-$TRIPLE_GNU.tar.gz" | tar -xz -C "$BIN_DIR"; then
+    ok "huayu (gnu)  ->  $BIN_DIR"
+else
+    fail "huayu $VERSION 下载失败"
+fi
 chmod +x "$BIN_DIR/huayu"
-ok "huayu  ->  $BIN_DIR"
 
 # ── tools: codex + claude ──────────────────────────────────────────────────
 install_tool() {
