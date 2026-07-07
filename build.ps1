@@ -183,9 +183,12 @@ function Build-Huayu {
         }
     }
 
-    # Update state
+    # Update state — recompute hash AFTER Sync-AllVersions, because it modifies
+    # Cargo.toml and installer.rs (which are part of the source hash). Saving
+    # the post-sync hash prevents false "source changed" on the next run.
+    $postSyncHash = Get-HuayuSourceHash
     $State | Add-Member -NotePropertyName "huayu" -NotePropertyValue ([PSCustomObject]@{
-        hash    = $currentHash
+        hash    = $postSyncHash
         version = $newVer
     }) -Force
     Save-BuildState
