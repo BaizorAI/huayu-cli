@@ -176,6 +176,59 @@ pub enum ToolEvent {
     Error(String),
 }
 
+/// Try to parse a line as a Claude Code stream-json event (NDJSON).
+/// Returns `Some(events)` if the line is valid stream-json, `None` otherwise.
+fn try_parse_stream_json(line: &str) -> Option<Vec<ToolEvent>> {
+    let v: serde_json::Value = serde_json::from_str(line).ok()?;
+    let event_type = v.get("type")?.as_str()?;
+
+    match event_type {
+        "assistant" => {
+            let content = match v.get("content") {
+                Some(serde_json::Value::String(s)) => s.clone(),
+                Some(other) => other.to_string(),
+                None => return Some(vec![]),
+            };
+            if content.trim().is_empty() {
+                return Some(vec![]);
+            }
+            let events = content
+                .lines()
+                .filter(|l| !l.trim().is_empty())
+                .map(|l| ToolEvent::Line(l.to_string()))
+                .collect();
+            Some(events)
+        }
+        "tool_use" => {
+            let tool_name = v
+                .get("name")
+                .and_then(|t| t.as_str())
+                .unwrap_or("tool");
+            let file_info = v
+                .get("input")
+                .and_then(|i| i.get("file_path"))
+                .and_then(|f| f.as_str())
+                .map(|f| format!(": {}", f))
+                .unwrap_or_default();
+            Some(vec![ToolEvent::Line(format!("🔧 {}{}", tool_name, file_info))])
+        }
+        "result" => {
+            let subtype = v.get("subtype").and_then(|s| s.as_str()).unwrap_or("");
+            match subtype {
+                "error" | "error_max_turns" => {
+                    let msg = v
+                        .get("content")
+                        .and_then(|c| c.as_str())
+                        .unwrap_or("unknown error");
+                    Some(vec![ToolEvent::Error(msg.to_string())])
+                }
+                _ => Some(vec![]), // success — content already streamed
+            }
+        }
+        _ => Some(vec![]), // skip system/init events
+    }
+}
+
 /// Parse a raw log line into a structured ToolEvent.
 pub fn parse_event(line: &str) -> ToolEvent {
     let lower = line.to_lowercase();
@@ -354,6 +407,8 @@ pub fn spawn(
                 CommandBuilder::new(bin)
             };
             c.arg("--print");
+            c.arg("--output-format");
+            c.arg("stream-json");
             c.arg("--dangerously-skip-permissions");
             c.arg("--model");
             c.arg(model);
@@ -482,7 +537,14 @@ pub fn spawn(
                         if let Some(f) = &mut log_file {
                             let _ = writeln!(f, "  [{:>3}] +{:.1}s  {}", line_count, elapsed.as_secs_f64(), trimmed);
                         }
-                        let _ = tx.send(parse_event(trimmed));
+                        // Try stream-json (NDJSON) parsing first; fall back to heuristic.
+                        if let Some(events) = try_parse_stream_json(trimmed) {
+                            for ev in events {
+                                let _ = tx.send(ev);
+                            }
+                        } else {
+                            let _ = tx.send(parse_event(trimmed));
+                        }
                     }
                 }
                 Err(e) => {

@@ -740,6 +740,7 @@ impl App {
             Ok(proc) => {
                 self.task_start = Some(Instant::now());
                 self.tool_process = Some(proc);
+                self.push_main("⏳ 思考中...");
             }
             Err(e) => {
                 self.push_main(format!("✗ 启动失败: {} — 运行 /update 安装工具", e));
