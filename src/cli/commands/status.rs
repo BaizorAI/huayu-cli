@@ -7,7 +7,12 @@ pub fn execute() {
     let cfg = config::load();
 
     println!();
-    println!("{}", "── 华宇 huayu status ──────────────────────────".bright_blue().bold());
+    println!(
+        "{}",
+        "── 华宇 huayu status ──────────────────────────"
+            .bright_blue()
+            .bold()
+    );
     println!();
 
     // API Key
@@ -23,7 +28,10 @@ pub fn execute() {
 
     // Tool availability
     let tools = [ToolType::Codex, ToolType::Claude];
-    println!("{}", "── 工具检测 ──────────────────────────────────────".dimmed());
+    println!(
+        "{}",
+        "── 工具检测 ──────────────────────────────────────".dimmed()
+    );
     for tool in &tools {
         let avail = tool.is_available();
         let status = if avail {

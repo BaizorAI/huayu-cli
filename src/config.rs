@@ -207,6 +207,16 @@ pub fn write_claude_config(cfg: &HuayuConfig) -> Result<(), AppError> {
     // bypassPermissionsModeAccepted=true pre-accepts the --dangerously-skip-permissions
     // prompt so claude can run non-interactively in huayu's PTY. Without this,
     // claude refuses with "must be accepted in an interactive session first".
+    let cli_config = serde_json::json!({
+        "bypassPermissionsModeAccepted": true,
+        "hasCompletedOnboarding": true,
+    });
+    std::fs::write(
+        dir.join("config.json"),
+        serde_json::to_string_pretty(&cli_config)?,
+    )
+    .map_err(AppError::Io)?;
+
     let settings = serde_json::json!({
         "bypassPermissionsModeAccepted": true,
         "hasCompletedOnboarding": true,
@@ -303,6 +313,7 @@ mod tests {
             claude_model: "claude-special".to_string(),
             claude_max_turns: 10,
             claude_permission_mode: "acceptEdits".to_string(),
+            model_info: HashMap::new(),
         };
         save(&cfg).unwrap();
         let loaded = load();
@@ -373,6 +384,11 @@ mod tests {
         assert_eq!(env["ANTHROPIC_BASE_URL"].as_str().unwrap(), "https://baizor.com/v1");
         assert_eq!(env["ANTHROPIC_MODEL"].as_str().unwrap(), "claude-test");
         assert_eq!(val["bypassPermissionsModeAccepted"].as_bool().unwrap(), true);
+
+        let cli_raw = std::fs::read_to_string(claude_config_dir().join("config.json")).unwrap();
+        let cli_config: serde_json::Value = serde_json::from_str(&cli_raw).unwrap();
+        assert_eq!(cli_config["bypassPermissionsModeAccepted"].as_bool().unwrap(), true);
+        assert_eq!(cli_config["hasCompletedOnboarding"].as_bool().unwrap(), true);
     }
 
     #[test]

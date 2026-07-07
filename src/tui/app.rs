@@ -109,10 +109,7 @@ impl App {
         for tool in [ToolType::Codex, ToolType::Claude] {
             let name = tool.binary();
             if !tool.is_available() {
-                startup_lines.push(format!(
-                    "[提示] {} 未找到 — 运行 /update 下载工具",
-                    name
-                ));
+                startup_lines.push(format!("[提示] {} 未找到 — 运行 /update 下载工具", name));
             } else if crate::services::installer::local_binary(name).is_some()
                 && !crate::services::installer::is_current_version(name)
             {
@@ -285,7 +282,8 @@ impl App {
                     self.push_main(format!("✗ 错误: {}", s));
                 }
                 ToolEvent::Done => {
-                    let elapsed = self.task_start
+                    let elapsed = self
+                        .task_start
                         .take()
                         .map(|t| format!(" ({:.1}s)", t.elapsed().as_secs_f32()))
                         .unwrap_or_default();
@@ -505,7 +503,11 @@ impl App {
         } else {
             let k = &self.config.api_key;
             let masked = if k.len() > 8 {
-                format!("sk-{}***{}", &k[..4.min(k.len())], &k[k.len().saturating_sub(4)..])
+                format!(
+                    "sk-{}***{}",
+                    &k[..4.min(k.len())],
+                    &k[k.len().saturating_sub(4)..]
+                )
             } else {
                 "***".to_string()
             };
@@ -521,7 +523,11 @@ impl App {
             let loc = crate::services::installer::local_binary(name)
                 .map(|p| format!(" (捆绑: {})", p.display()))
                 .unwrap_or_else(|| {
-                    if avail { " (PATH)".to_string() } else { String::new() }
+                    if avail {
+                        " (PATH)".to_string()
+                    } else {
+                        String::new()
+                    }
                 });
             let ver = if crate::services::installer::is_current_version(name) {
                 format!(" v{}", crate::services::installer::pinned_version(name))
@@ -536,7 +542,11 @@ impl App {
             self.push_main(format!(
                 "  {:8} {}{}{}",
                 name,
-                if avail { "✓ 可用" } else { "✗ 未找到 — 运行 /update" },
+                if avail {
+                    "✓ 可用"
+                } else {
+                    "✗ 未找到 — 运行 /update"
+                },
                 loc,
                 ver,
             ));
@@ -578,7 +588,12 @@ impl App {
         if let Some(cmd) = command::parse(&input) {
             // Track recent slash commands (exclude meta/destructive ones)
             if !matches!(cmd, AppCommand::Help | AppCommand::Clear | AppCommand::Quit) {
-                if self.recent_commands.last().map(|s: &String| s != &input).unwrap_or(true) {
+                if self
+                    .recent_commands
+                    .last()
+                    .map(|s: &String| s != &input)
+                    .unwrap_or(true)
+                {
                     self.recent_commands.push(input.clone());
                     if self.recent_commands.len() > 5 {
                         self.recent_commands.remove(0);
@@ -591,7 +606,12 @@ impl App {
 
         // Append non-empty free-text to input history
         if !input.is_empty() {
-            if self.input_history.last().map(|s: &String| s != &input).unwrap_or(true) {
+            if self
+                .input_history
+                .last()
+                .map(|s: &String| s != &input)
+                .unwrap_or(true)
+            {
                 self.input_history.push(input.clone());
                 if self.input_history.len() > 50 {
                     self.input_history.remove(0);
@@ -615,7 +635,11 @@ impl App {
 
         let history = self.messages.clone();
         self.messages.push(Message::user(&input));
-        let preview_end = input.char_indices().nth(60).map(|(i, _)| i).unwrap_or(input.len());
+        let preview_end = input
+            .char_indices()
+            .nth(60)
+            .map(|(i, _)| i)
+            .unwrap_or(input.len());
         let preview = &input[..preview_end];
         self.push_main(format!("─── {} ▶ {} ───", self.tool_type.as_str(), preview));
 
@@ -766,7 +790,9 @@ mod tests {
         app.cursor_pos = app.input.len();
         app.submit();
         assert!(
-            app.main_lines.iter().any(|l| l.contains("/login") || l.contains("未登录")),
+            app.main_lines
+                .iter()
+                .any(|l| l.contains("/login") || l.contains("未登录")),
             "expected login prompt in output, got: {:?}",
             app.main_lines
         );

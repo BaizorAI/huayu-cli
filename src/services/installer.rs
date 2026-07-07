@@ -32,7 +32,11 @@ pub fn local_binary(name: &str) -> Option<PathBuf> {
             return Some(cmd);
         }
     }
-    if npm_bin.exists() { Some(npm_bin) } else { None }
+    if npm_bin.exists() {
+        Some(npm_bin)
+    } else {
+        None
+    }
 }
 
 pub fn pinned_version(name: &str) -> &'static str {
@@ -69,7 +73,10 @@ fn target_triple() -> &'static str {
 fn tool_archive_url(name: &str, version: &str) -> String {
     let triple = target_triple();
     let ext = if cfg!(windows) { "zip" } else { "tar.gz" };
-    format!("https://baizor.com/install/{}-{}-{}.{}", name, version, triple, ext)
+    format!(
+        "https://baizor.com/install/{}-{}-{}.{}",
+        name, version, triple, ext
+    )
 }
 
 #[cfg(windows)]
@@ -90,9 +97,11 @@ pub fn download_tools(names: Vec<&'static str>) -> Result<mpsc::Receiver<String>
             .expect("tokio runtime");
         for name in &names {
             match *name {
-                "codex"  => rt.block_on(download_tool(&tx, &dir, "codex",  CODEX_VERSION)),
+                "codex" => rt.block_on(download_tool(&tx, &dir, "codex", CODEX_VERSION)),
                 "claude" => rt.block_on(download_tool(&tx, &dir, "claude", CLAUDE_VERSION)),
-                other    => { let _ = tx.send(format!("[error] 未知工具: {}", other)); }
+                other => {
+                    let _ = tx.send(format!("[error] 未知工具: {}", other));
+                }
             }
         }
         let _ = tx.send("__DONE__".to_string());
@@ -101,13 +110,22 @@ pub fn download_tools(names: Vec<&'static str>) -> Result<mpsc::Receiver<String>
 }
 
 /// Download a pkg-compiled binary from baizor.com; fall back to npm if unavailable.
-async fn download_tool(tx: &mpsc::Sender<String>, dir: &PathBuf, name: &'static str, version: &'static str) {
+async fn download_tool(
+    tx: &mpsc::Sender<String>,
+    dir: &PathBuf,
+    name: &'static str,
+    version: &'static str,
+) {
     let url = tool_archive_url(name, version);
     let _ = tx.send(format!("[下载] {} {} ...", name, version));
     let resp = match reqwest::get(&url).await {
         Ok(r) if r.status().is_success() => r,
         Ok(r) => {
-            let _ = tx.send(format!("[提示] baizor 暂无 {} 二进制 (HTTP {})，改用 npm ...", name, r.status()));
+            let _ = tx.send(format!(
+                "[提示] baizor 暂无 {} 二进制 (HTTP {})，改用 npm ...",
+                name,
+                r.status()
+            ));
             install_tool_npm(tx, name, npm_package(name), version);
             return;
         }
@@ -144,7 +162,7 @@ async fn download_tool(tx: &mpsc::Sender<String>, dir: &PathBuf, name: &'static 
 fn npm_package(name: &str) -> &'static str {
     match name {
         "claude" => "@anthropic-ai/claude-code",
-        _        => "@openai/codex",
+        _ => "@openai/codex",
     }
 }
 
@@ -173,7 +191,9 @@ fn install_tool_npm(tx: &mpsc::Sender<String>, name: &str, pkg: &str, version: &
         let s = stx.clone();
         std::thread::spawn(move || {
             for line in std::io::BufReader::new(stdout).lines().flatten() {
-                if !line.trim().is_empty() { let _ = s.send(line); }
+                if !line.trim().is_empty() {
+                    let _ = s.send(line);
+                }
             }
         });
     }
@@ -181,7 +201,9 @@ fn install_tool_npm(tx: &mpsc::Sender<String>, name: &str, pkg: &str, version: &
         let s = stx.clone();
         std::thread::spawn(move || {
             for line in std::io::BufReader::new(stderr).lines().flatten() {
-                if !line.trim().is_empty() { let _ = s.send(line); }
+                if !line.trim().is_empty() {
+                    let _ = s.send(line);
+                }
             }
         });
     }
@@ -195,7 +217,10 @@ fn install_tool_npm(tx: &mpsc::Sender<String>, name: &str, pkg: &str, version: &
             let _ = tx.send(format!("[完成] {} {} 已安装", name, version));
         }
         Ok(s) => {
-            let _ = tx.send(format!("[错误] npm 安装失败 (exit {})", s.code().unwrap_or(-1)));
+            let _ = tx.send(format!(
+                "[错误] npm 安装失败 (exit {})",
+                s.code().unwrap_or(-1)
+            ));
         }
         Err(e) => {
             let _ = tx.send(format!("[错误] 等待进程失败: {}", e));
@@ -225,7 +250,9 @@ fn extract_bundle(data: &[u8], dest: &PathBuf) -> Result<(), String> {
     let mut archive = zip::ZipArchive::new(cursor).map_err(|e| e.to_string())?;
     for i in 0..archive.len() {
         let mut file = archive.by_index(i).map_err(|e| e.to_string())?;
-        let rel = file.name().replace('/', &std::path::MAIN_SEPARATOR.to_string());
+        let rel = file
+            .name()
+            .replace('/', &std::path::MAIN_SEPARATOR.to_string());
         let out_path = dest.join(&rel);
         if file.name().ends_with('/') {
             std::fs::create_dir_all(&out_path).map_err(|e| e.to_string())?;

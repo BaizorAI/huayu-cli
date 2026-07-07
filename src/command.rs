@@ -109,12 +109,18 @@ mod tests {
 
     #[test]
     fn parse_update_no_args_targets_all() {
-        assert!(matches!(parse("/update"), Some(AppCommand::Update(UpdateTarget::All))));
+        assert!(matches!(
+            parse("/update"),
+            Some(AppCommand::Update(UpdateTarget::All))
+        ));
     }
 
     #[test]
     fn parse_install_is_synonym_for_update_all() {
-        assert!(matches!(parse("/install"), Some(AppCommand::Update(UpdateTarget::All))));
+        assert!(matches!(
+            parse("/install"),
+            Some(AppCommand::Update(UpdateTarget::All))
+        ));
     }
 
     #[test]

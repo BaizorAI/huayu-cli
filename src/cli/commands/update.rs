@@ -1,12 +1,19 @@
-use std::sync::mpsc;
-use colored::Colorize;
 use crate::services::installer;
+use colored::Colorize;
+use std::sync::mpsc;
 
 pub fn execute(tools: Vec<&'static str>) {
     let names_display = tools.join(", ");
     println!();
-    println!("{}", format!("── 安装工具: {} ──────────────────────────────────", names_display)
-        .bright_blue().bold());
+    println!(
+        "{}",
+        format!(
+            "── 安装工具: {} ──────────────────────────────────",
+            names_display
+        )
+        .bright_blue()
+        .bold()
+    );
     println!();
 
     let rx: mpsc::Receiver<String> = match installer::download_tools(tools) {

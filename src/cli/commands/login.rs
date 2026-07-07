@@ -1,7 +1,7 @@
 use clap::Args;
 use colored::Colorize;
 
-use crate::config::{self, write_codex_config, write_claude_config};
+use crate::config::{self, write_claude_config, write_codex_config};
 use crate::error::AppError;
 use crate::services::login::{LoginOutcome, LoginService, LOGIN_TIMEOUT_SECS};
 
@@ -23,17 +23,40 @@ pub fn execute(args: LoginArgs) -> Result<(), AppError> {
     let timeout_mins = LOGIN_TIMEOUT_SECS / 60;
 
     println!();
-    println!("{}", "╔══════════════════════════════════════════════════════════╗".bright_blue().bold());
-    println!("{}", "║            华宇 huayu — 浏览器登录                      ║".bright_blue().bold());
-    println!("{}", "╠══════════════════════════════════════════════════════════╣".bright_blue().bold());
+    println!(
+        "{}",
+        "╔══════════════════════════════════════════════════════════╗"
+            .bright_blue()
+            .bold()
+    );
+    println!(
+        "{}",
+        "║            华宇 huayu — 浏览器登录                      ║"
+            .bright_blue()
+            .bold()
+    );
+    println!(
+        "{}",
+        "╠══════════════════════════════════════════════════════════╣"
+            .bright_blue()
+            .bold()
+    );
     println!("║  {}  ║", login_url.bright_white().bold());
-    println!("{}", "╚══════════════════════════════════════════════════════════╝".bright_blue().bold());
+    println!(
+        "{}",
+        "╚══════════════════════════════════════════════════════════╝"
+            .bright_blue()
+            .bold()
+    );
     println!();
     println!("{} 1. 在浏览器中打开上方链接", "│".dimmed());
     println!("{} 2. 登录 Baizor 账号", "│".dimmed());
     println!("{} 3. 获取 API Key（点击后自动捕获）", "│".dimmed());
     println!();
-    println!("{}", format!("等待登录（超时 {timeout_mins} 分钟）...").dimmed());
+    println!(
+        "{}",
+        format!("等待登录（超时 {timeout_mins} 分钟）...").dimmed()
+    );
 
     let outcome: LoginOutcome = rt
         .block_on(LoginService::poll_for_key(&args.base_url, &token))

@@ -76,7 +76,11 @@ impl LoginService {
     }
 
     pub fn login_url(base_url: &str, token: &str) -> String {
-        format!("{}/code/token?token={}", base_url.trim_end_matches('/'), token)
+        format!(
+            "{}/code/token?token={}",
+            base_url.trim_end_matches('/'),
+            token
+        )
     }
 
     pub async fn poll_for_key(base_url: &str, token: &str) -> Result<LoginOutcome, String> {
@@ -107,26 +111,31 @@ impl LoginService {
                                         .unwrap_or_default()
                                         .into_iter()
                                         .map(|(name, info)| {
-                                            (name, crate::config::ModelInfo {
-                                                context_window: info.context_window,
-                                                max_output_tokens: info.max_output_tokens,
-                                            })
+                                            (
+                                                name,
+                                                crate::config::ModelInfo {
+                                                    context_window: info.context_window,
+                                                    max_output_tokens: info.max_output_tokens,
+                                                },
+                                            )
                                         })
                                         .collect();
                                     return Ok(LoginOutcome {
                                         api_key: key,
-                                        default_model: data
-                                            .model
-                                            .filter(|v| !v.is_empty()),
+                                        default_model: data.model.filter(|v| !v.is_empty()),
                                         codex: CodexSettings {
                                             model: data.codex_model.filter(|v| !v.is_empty()),
                                             full_auto: data.codex_full_auto,
-                                            reasoning_effort: data.codex_reasoning_effort.filter(|v| !v.is_empty()),
+                                            reasoning_effort: data
+                                                .codex_reasoning_effort
+                                                .filter(|v| !v.is_empty()),
                                         },
                                         claude: ClaudeSettings {
                                             model: data.claude_model.filter(|v| !v.is_empty()),
                                             max_turns: data.claude_max_turns,
-                                            permission_mode: data.claude_permission_mode.filter(|v| !v.is_empty()),
+                                            permission_mode: data
+                                                .claude_permission_mode
+                                                .filter(|v| !v.is_empty()),
                                         },
                                         model_info,
                                     });
@@ -155,7 +164,10 @@ mod tests {
 
     #[test]
     fn tokens_are_unique() {
-        assert_ne!(LoginService::generate_token(), LoginService::generate_token());
+        assert_ne!(
+            LoginService::generate_token(),
+            LoginService::generate_token()
+        );
     }
 
     #[test]

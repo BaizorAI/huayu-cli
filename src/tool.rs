@@ -72,11 +72,14 @@ pub fn parse_event(line: &str) -> ToolEvent {
         || lower.contains("authentication failed")
         || lower.contains("invalid api key")
         || lower.contains("incorrect api key")
-        || (lower.contains("unauthorized") && (lower.contains("error") || lower.contains("status")));
+        || (lower.contains("unauthorized")
+            && (lower.contains("error") || lower.contains("status")));
     if is_auth_error {
         return ToolEvent::AuthError;
     }
-    if lower.contains("connection refused") || (lower.contains("network") && lower.contains("error")) {
+    if lower.contains("connection refused")
+        || (lower.contains("network") && lower.contains("error"))
+    {
         return ToolEvent::NetworkError;
     }
     if lower.contains("wrote ") || lower.contains("written ") || lower.contains("created ") {
@@ -170,11 +173,16 @@ pub fn spawn(
 
     let pty_system = native_pty_system();
     let pair = pty_system
-        .openpty(PtySize { rows: 50, cols: 220, pixel_width: 0, pixel_height: 0 })
+        .openpty(PtySize {
+            rows: 50,
+            cols: 220,
+            pixel_width: 0,
+            pixel_height: 0,
+        })
         .map_err(|e| AppError::Message(e.to_string()))?;
 
     let master = pair.master;
-    let slave  = pair.slave;
+    let slave = pair.slave;
 
     let cwd = std::env::current_dir().ok();
 
@@ -203,7 +211,9 @@ pub fn spawn(
             c.arg(&full_prompt);
             c.env("CODEX_HOME", codex_home.as_os_str());
             c.env("OPENAI_API_KEY", api_key);
-            if let Some(ref d) = cwd { c.cwd(d); }
+            if let Some(ref d) = cwd {
+                c.cwd(d);
+            }
             c
         }
         ToolType::Claude => {
@@ -218,7 +228,24 @@ pub fn spawn(
             c.env("CLAUDE_CONFIG_DIR", claude_config_dir.as_os_str());
             c.env("ANTHROPIC_AUTH_TOKEN", api_key);
             c.env("ANTHROPIC_BASE_URL", api_endpoint.as_str());
-            if let Some(ref d) = cwd { c.cwd(d); }
+            #[cfg(windows)]
+            if std::env::var_os("SHELL").is_none() {
+                for candidate in [
+                    r"C:\Program Files\Git\bin\bash.exe",
+                    r"C:\Program Files\Git\usr\bin\bash.exe",
+                    r"C:\msys64\usr\bin\bash.exe",
+                    r"C:\cygwin64\bin\bash.exe",
+                ] {
+                    let shell = std::path::Path::new(candidate);
+                    if shell.exists() {
+                        c.env("SHELL", shell.as_os_str());
+                        break;
+                    }
+                }
+            }
+            if let Some(ref d) = cwd {
+                c.cwd(d);
+            }
             c
         }
     };
@@ -274,7 +301,11 @@ pub fn spawn(
         let _ = tx.send(ToolEvent::Done);
     });
 
-    Ok(ToolProcess { process_id, writer, rx })
+    Ok(ToolProcess {
+        process_id,
+        writer,
+        rx,
+    })
 }
 
 // ── Conversation message ───────────────────────────────────────────────────
@@ -287,11 +318,17 @@ pub struct Message {
 
 impl Message {
     pub fn user(text: impl Into<String>) -> Self {
-        Self { role: "user", text: text.into() }
+        Self {
+            role: "user",
+            text: text.into(),
+        }
     }
 
     pub fn assistant(text: impl Into<String>) -> Self {
-        Self { role: "assistant", text: text.into() }
+        Self {
+            role: "assistant",
+            text: text.into(),
+        }
     }
 }
 
@@ -307,37 +344,58 @@ mod tests {
 
     #[test]
     fn auth_error_from_401_unauthorized() {
-        assert!(matches!(parse_event("error: 401 Unauthorized"), ToolEvent::AuthError));
+        assert!(matches!(
+            parse_event("error: 401 Unauthorized"),
+            ToolEvent::AuthError
+        ));
     }
 
     #[test]
     fn auth_error_from_invalid_api_key() {
-        assert!(matches!(parse_event("invalid api key provided"), ToolEvent::AuthError));
+        assert!(matches!(
+            parse_event("invalid api key provided"),
+            ToolEvent::AuthError
+        ));
     }
 
     #[test]
     fn auth_error_from_authentication_failed() {
-        assert!(matches!(parse_event("authentication failed"), ToolEvent::AuthError));
+        assert!(matches!(
+            parse_event("authentication failed"),
+            ToolEvent::AuthError
+        ));
     }
 
     #[test]
     fn network_error_from_connection_refused() {
-        assert!(matches!(parse_event("Connection refused"), ToolEvent::NetworkError));
+        assert!(matches!(
+            parse_event("Connection refused"),
+            ToolEvent::NetworkError
+        ));
     }
 
     #[test]
     fn network_error_from_network_error_phrase() {
-        assert!(matches!(parse_event("network error occurred"), ToolEvent::NetworkError));
+        assert!(matches!(
+            parse_event("network error occurred"),
+            ToolEvent::NetworkError
+        ));
     }
 
     #[test]
     fn file_written_from_wrote_prefix() {
-        assert!(matches!(parse_event("wrote src/main.rs"), ToolEvent::FileWritten(_)));
+        assert!(matches!(
+            parse_event("wrote src/main.rs"),
+            ToolEvent::FileWritten(_)
+        ));
     }
 
     #[test]
     fn file_written_from_created_prefix() {
-        assert!(matches!(parse_event("created new file foo.txt"), ToolEvent::FileWritten(_)));
+        assert!(matches!(
+            parse_event("created new file foo.txt"),
+            ToolEvent::FileWritten(_)
+        ));
     }
 
     #[test]

@@ -53,7 +53,9 @@ fn render_status_bar(f: &mut Frame, app: &App, area: Rect) {
     let line = Line::from(vec![
         Span::styled(
             " 华宇 huayu ",
-            Style::default().fg(theme::TITLE).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(theme::TITLE)
+                .add_modifier(Modifier::BOLD),
         ),
         Span::styled("│", Style::default().fg(theme::BORDER)),
         Span::styled(tool_label, Style::default().fg(theme::HIGHLIGHT)),
@@ -159,13 +161,21 @@ fn render_help_panel(f: &mut Frame, app: &App, area: Rect) {
     let cwd_char_count = cwd.chars().count();
     let cwd_display = if cwd_char_count > max_cwd && max_cwd > 3 {
         let keep = max_cwd - 3;
-        let start = cwd.char_indices().nth(cwd_char_count - keep).map(|(i, _)| i).unwrap_or(0);
+        let start = cwd
+            .char_indices()
+            .nth(cwd_char_count - keep)
+            .map(|(i, _)| i)
+            .unwrap_or(0);
         format!("...{}", &cwd[start..])
     } else {
         cwd
     };
 
-    let tool_avail = if app.tool_type.is_available() { "✓" } else { "✗" };
+    let tool_avail = if app.tool_type.is_available() {
+        "✓"
+    } else {
+        "✗"
+    };
     let running = app.tool_process.is_some();
 
     let mut content: Vec<Line> = Vec::new();
@@ -191,7 +201,9 @@ fn render_help_panel(f: &mut Frame, app: &App, area: Rect) {
 
         content.push(Line::from(Span::styled(
             "任务进行中",
-            Style::default().fg(theme::STATUS_OK).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(theme::STATUS_OK)
+                .add_modifier(Modifier::BOLD),
         )));
         content.push(Line::from(vec![
             Span::styled(
@@ -225,13 +237,19 @@ fn render_help_panel(f: &mut Frame, app: &App, area: Rect) {
             content.push(Line::from(""));
             content.push(Line::from(Span::styled(
                 "最近输出",
-                Style::default().fg(theme::TITLE).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(theme::TITLE)
+                    .add_modifier(Modifier::BOLD),
             )));
             let max_w = area.width.saturating_sub(4) as usize;
             for line in preview_lines {
                 let char_count = line.chars().count();
                 let truncated = if char_count > max_w && max_w > 3 {
-                    let end = line.char_indices().nth(max_w - 1).map(|(i, _)| i).unwrap_or(line.len());
+                    let end = line
+                        .char_indices()
+                        .nth(max_w - 1)
+                        .map(|(i, _)| i)
+                        .unwrap_or(line.len());
                     format!("{}…", &line[..end])
                 } else {
                     line.to_string()
@@ -254,7 +272,9 @@ fn render_help_panel(f: &mut Frame, app: &App, area: Rect) {
     // ── Shortcuts ───────────────────────────────────────────────────────────
     content.push(Line::from(Span::styled(
         "快捷键",
-        Style::default().fg(theme::TITLE).add_modifier(Modifier::BOLD),
+        Style::default()
+            .fg(theme::TITLE)
+            .add_modifier(Modifier::BOLD),
     )));
     content.push(Line::from(Span::styled(
         "  Enter   发送/确认",
@@ -293,7 +313,9 @@ fn render_help_panel(f: &mut Frame, app: &App, area: Rect) {
     // ── Status ──────────────────────────────────────────────────────────────
     content.push(Line::from(Span::styled(
         "当前状态",
-        Style::default().fg(theme::TITLE).add_modifier(Modifier::BOLD),
+        Style::default()
+            .fg(theme::TITLE)
+            .add_modifier(Modifier::BOLD),
     )));
     content.push(Line::from(vec![
         Span::styled("  工具  ", Style::default().fg(theme::DIM)),
@@ -318,7 +340,9 @@ fn render_help_panel(f: &mut Frame, app: &App, area: Rect) {
         content.push(Line::from(""));
         content.push(Line::from(Span::styled(
             "最近命令",
-            Style::default().fg(theme::TITLE).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(theme::TITLE)
+                .add_modifier(Modifier::BOLD),
         )));
         for cmd in &app.recent_commands {
             content.push(Line::from(Span::styled(
