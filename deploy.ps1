@@ -96,6 +96,8 @@ if (-not (Test-Path $ReleaseDir)) {
 }
 
 $Triple = "x86_64-pc-windows-msvc"
+$LinuxTriple = "x86_64-unknown-linux-musl"
+$LinuxToolsTriple = "x86_64-unknown-linux-gnu"
 
 foreach ($name in $toDeploy) {
     $ver = $State.$name.version
@@ -105,12 +107,16 @@ foreach ($name in $toDeploy) {
             $files = @(
                 "$ReleaseDir\huayu-$Triple.zip"
                 "$ReleaseDir\huayu-version.txt"
+                # Linux artifacts (may not exist if -NoLinux was used)
+                "$ReleaseDir\huayu-$ver-$LinuxTriple.tar.gz"
             )
         }
         default {
             $files = @(
                 "$ReleaseDir\$name-$ver-$Triple.zip"
                 "$ReleaseDir\$name-version.txt"
+                # Linux artifacts
+                "$ReleaseDir\$name-$ver-$LinuxToolsTriple.tar.gz"
             )
         }
     }

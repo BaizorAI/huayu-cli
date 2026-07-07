@@ -689,4 +689,58 @@ mod tests {
         let line = "compiling main.rs";
         assert!(matches!(parse_event(line), ToolEvent::Line(s) if s == line));
     }
+
+    // ── stream-json parsing ──────────────────────────────────────────────
+
+    #[test]
+    fn stream_json_assistant_text() {
+        let line = r#"{"type":"assistant","subtype":"text","content":"Hello world"}"#;
+        let events = try_parse_stream_json(line).unwrap();
+        assert_eq!(events.len(), 1);
+        assert!(matches!(&events[0], ToolEvent::Line(s) if s == "Hello world"));
+    }
+
+    #[test]
+    fn stream_json_assistant_multiline() {
+        let line = r#"{"type":"assistant","subtype":"text","content":"Line 1\nLine 2\nLine 3"}"#;
+        let events = try_parse_stream_json(line).unwrap();
+        assert_eq!(events.len(), 3);
+        assert!(matches!(&events[0], ToolEvent::Line(s) if s == "Line 1"));
+        assert!(matches!(&events[2], ToolEvent::Line(s) if s == "Line 3"));
+    }
+
+    #[test]
+    fn stream_json_tool_use() {
+        let line = r#"{"type":"tool_use","name":"Read","input":{"file_path":"src/main.rs"}}"#;
+        let events = try_parse_stream_json(line).unwrap();
+        assert_eq!(events.len(), 1);
+        assert!(matches!(&events[0], ToolEvent::Line(s) if s.contains("Read") && s.contains("src/main.rs")));
+    }
+
+    #[test]
+    fn stream_json_result_error() {
+        let line = r#"{"type":"result","subtype":"error","content":"max tokens exceeded"}"#;
+        let events = try_parse_stream_json(line).unwrap();
+        assert_eq!(events.len(), 1);
+        assert!(matches!(&events[0], ToolEvent::Error(s) if s.contains("max tokens")));
+    }
+
+    #[test]
+    fn stream_json_result_success_is_empty() {
+        let line = r#"{"type":"result","subtype":"success","cost_usd":0.05}"#;
+        let events = try_parse_stream_json(line).unwrap();
+        assert!(events.is_empty());
+    }
+
+    #[test]
+    fn stream_json_system_event_is_skipped() {
+        let line = r#"{"type":"system","subtype":"init","session_id":"abc"}"#;
+        let events = try_parse_stream_json(line).unwrap();
+        assert!(events.is_empty());
+    }
+
+    #[test]
+    fn non_json_returns_none() {
+        assert!(try_parse_stream_json("just a regular line").is_none());
+    }
 }

@@ -12,6 +12,7 @@
 param(
     [switch]$Force,
     [switch]$NoBump,
+    [switch]$NoLinux,
     [ValidateSet("huayu", "codex", "claude")]
     [string]$Component
 )
@@ -108,16 +109,6 @@ function Sync-AllVersions {
         $pt = $pt -replace '(\$CodexVersion\s*=\s*")[^"]+(")', "`${1}$CodexVer`${2}"
         $pt = $pt -replace '(\$ClaudeVersion\s*=\s*")[^"]+(")', "`${1}$ClaudeVer`${2}"
         [System.IO.File]::WriteAllText($ptPath, $pt, $utf8NoBom)
-    }
-
-    # 4. package-linux.sh (UTF-8 — contains Chinese characters)
-    $plPath = "$ScriptDir\package-linux.sh"
-    if (Test-Path $plPath) {
-        $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
-        $pl = [System.IO.File]::ReadAllText($plPath, $utf8NoBom)
-        $pl = $pl -replace '(CODEX_VERSION=")[^"]+(")', "`${1}$CodexVer`${2}"
-        $pl = $pl -replace '(CLAUDE_VERSION=")[^"]+(")', "`${1}$ClaudeVer`${2}"
-        [System.IO.File]::WriteAllText($plPath, $pl, $utf8NoBom)
     }
 }
 
@@ -261,6 +252,51 @@ foreach ($c in $components) {
         }
     }
 }
+
+# ── WSL Linux build ───────────────────────────────────────────────────────
+
+if (-not $NoLinux) {
+    Write-Host ""
+    Write-Host "  ─── Linux (WSL) ──────────────────────────────────────" -ForegroundColor DarkGray
+
+    $wslAvailable = $false
+    try {
+        $null = Get-Command wsl -ErrorAction Stop
+        $wslAvailable = $true
+    } catch {}
+
+    if (-not $wslAvailable) {
+        Write-Host "  [skip] WSL not available — Linux build skipped" -ForegroundColor DarkGray
+    } else {
+        # Build the WSL argument list
+        $wslArgs = @()
+        if ($Component -eq "codex" -or $Component -eq "claude") {
+            # Tool-only: skip cargo build
+            $wslArgs += "--skip-build"
+        }
+        if ($Component -eq "huayu") {
+            # Huayu-only: skip tool bundling
+            $wslArgs += "--skip-tools"
+        }
+
+        # Convert Windows path to WSL path
+        $wslScriptDir = wsl wslpath -u "$ScriptDir"
+        $wslScript = "$wslScriptDir/build-linux-all.sh"
+
+        Step "wsl bash build-linux-all.sh $($wslArgs -join ' ') ..."
+        wsl bash $wslScript @wslArgs
+        $wslExit = $LASTEXITCODE
+
+        if ($wslExit -eq 0) {
+            Ok "Linux build complete"
+            $built++
+        } else {
+            Write-Host "  [!] Linux build failed (exit $wslExit) — Windows build is fine" -ForegroundColor Yellow
+        }
+    }
+}
+
+# ── Summary ───────────────────────────────────────────────────────────────
 
 Write-Host ""
 Write-Host "  ─────────────────────────────────────────────────────" -ForegroundColor DarkGray
