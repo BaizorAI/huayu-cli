@@ -452,7 +452,13 @@ pub fn spawn(
         .map(|p| p.display().to_string())
         .unwrap_or_else(|| "(none found!)".to_string());
     let prompt_preview = if full_prompt.len() > 80 {
-        format!("{}...", &full_prompt[..80])
+        let end = full_prompt
+            .char_indices()
+            .take_while(|&(i, _)| i < 80)
+            .map(|(i, c)| i + c.len_utf8())
+            .last()
+            .unwrap_or(80);
+        format!("{}...", &full_prompt[..end])
     } else {
         full_prompt.clone()
     };
