@@ -238,6 +238,12 @@ impl ToolProcess {
     }
 }
 
+impl Drop for ToolProcess {
+    fn drop(&mut self) {
+        self.kill();
+    }
+}
+
 fn kill_process(pid: u32) {
     #[cfg(unix)]
     {

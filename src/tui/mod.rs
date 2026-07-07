@@ -29,13 +29,14 @@ pub fn run(config: HuayuConfig) -> Result<(), Box<dyn std::error::Error>> {
 
     let result = run_loop(&mut terminal, config);
 
-    disable_raw_mode()?;
-    execute!(
+    // Restore terminal state — must succeed even after a tool subprocess crash.
+    let _ = disable_raw_mode();
+    let _ = execute!(
         terminal.backend_mut(),
         LeaveAlternateScreen,
         DisableMouseCapture
-    )?;
-    terminal.show_cursor()?;
+    );
+    let _ = terminal.show_cursor();
 
     result
 }
