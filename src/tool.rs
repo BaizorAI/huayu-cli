@@ -59,7 +59,7 @@ pub enum ToolEvent {
     TestPassed,
     TestFailed(String),
     AuthError,
-    NetworkError,
+    NetworkError(String),
     Done,
     Error(String),
 }
@@ -81,7 +81,7 @@ pub fn parse_event(line: &str) -> ToolEvent {
         || lower.contains("connection error")
         || (lower.contains("network") && lower.contains("error"))
     {
-        return ToolEvent::NetworkError;
+        return ToolEvent::NetworkError(line.to_string());
     }
     if lower.contains("wrote ") || lower.contains("written ") || lower.contains("created ") {
         return ToolEvent::FileWritten(line.to_string());
@@ -170,7 +170,7 @@ pub fn spawn(
     claude_max_turns: u32,
 ) -> Result<ToolProcess, AppError> {
     let full_prompt = build_prompt(history, prompt);
-    let api_endpoint = format!("{}/v1", base_url.trim_end_matches('/'));
+    let _api_endpoint = format!("{}/v1", base_url.trim_end_matches('/'));
 
     let pty_system = native_pty_system();
     let pair = pty_system
@@ -221,6 +221,8 @@ pub fn spawn(
             let mut c = CommandBuilder::new(tool.binary_path());
             c.arg("--print");
             c.arg("--dangerously-skip-permissions");
+            c.arg("--model");
+            c.arg(model);
             if claude_max_turns > 0 {
                 c.arg("--max-turns");
                 c.arg(claude_max_turns.to_string());
@@ -230,6 +232,7 @@ pub fn spawn(
             c.env("ANTHROPIC_AUTH_TOKEN", api_key);
             // Claude Code appends /v1 internally — pass the bare base URL.
             c.env("ANTHROPIC_BASE_URL", base_url.trim_end_matches('/'));
+            c.env("ANTHROPIC_MODEL", model);
             #[cfg(windows)]
             if std::env::var_os("SHELL").is_none() {
                 for candidate in [
@@ -251,6 +254,12 @@ pub fn spawn(
             c
         }
     };
+
+    // Capture spawn metadata for debug logging before moving `cmd`.
+    let tool_label = tool.as_str().to_string();
+    let binary_path_str = tool.binary_path().display().to_string();
+    let base_url_str = base_url.to_string();
+    let model_str = model.to_string();
 
     let mut child = slave.spawn_command(cmd).map_err(|e| {
         let s = e.to_string().to_lowercase();
@@ -288,18 +297,33 @@ pub fn spawn(
             .open(&log_path)
             .ok();
 
+        // Log spawn details for debugging.
+        if let Some(f) = &mut log_file {
+            let _ = writeln!(f, "");
+            let _ = writeln!(f, "=== spawn {} ===", tool_label);
+            let _ = writeln!(f, "  binary: {}", binary_path_str);
+            let _ = writeln!(f, "  model:  {}", model_str);
+            let _ = writeln!(f, "  base:   {}", base_url_str);
+            let _ = writeln!(f, "  pid:    {:?}", process_id);
+        }
+
         let _master_keep = master;
+        let mut line_count: u32 = 0;
         for line in std::io::BufReader::new(reader).lines().flatten() {
             let clean = strip_ansi(&line);
             let trimmed = clean.trim();
             if !trimmed.is_empty() {
+                line_count += 1;
                 if let Some(f) = &mut log_file {
-                    let _ = writeln!(f, "{}", trimmed);
+                    let _ = writeln!(f, "  [{}] {}", line_count, trimmed);
                 }
                 let _ = tx.send(parse_event(trimmed));
             }
         }
-        let _ = child.wait();
+        let exit_status = child.wait();
+        if let Some(f) = &mut log_file {
+            let _ = writeln!(f, "  exit: {:?}  (lines: {})", exit_status, line_count);
+        }
         let _ = tx.send(ToolEvent::Done);
     });
 
@@ -372,7 +396,7 @@ mod tests {
     fn network_error_from_connection_refused() {
         assert!(matches!(
             parse_event("Connection refused"),
-            ToolEvent::NetworkError
+            ToolEvent::NetworkError(_)
         ));
     }
 
@@ -380,7 +404,7 @@ mod tests {
     fn network_error_from_network_error_phrase() {
         assert!(matches!(
             parse_event("network error occurred"),
-            ToolEvent::NetworkError
+            ToolEvent::NetworkError(_)
         ));
     }
 

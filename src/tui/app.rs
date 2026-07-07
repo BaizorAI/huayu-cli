@@ -329,9 +329,9 @@ impl App {
                     self.connection_status = ConnectionStatus::AuthError;
                     self.push_main("✗ API认证失败 (401) — 请使用 /login 重新登录");
                 }
-                ToolEvent::NetworkError => {
+                ToolEvent::NetworkError(ref detail) => {
                     self.connection_status = ConnectionStatus::NetworkError;
-                    self.push_main("✗ 网络错误 — 请检查 baizor.com 连接");
+                    self.push_main(format!("✗ 网络错误: {}", detail));
                 }
                 ToolEvent::Error(s) => {
                     self.push_main(format!("✗ 错误: {}", s));
