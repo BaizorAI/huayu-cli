@@ -54,7 +54,7 @@ chmod +x "$BIN_DIR/huayu"
 install_tool() {
     local name="$1"
     local version="$2"
-    local zip="$name-$version-$TRIPLE.tar.gz"
+    local zip="$name-$version-$TRIPLE_GNU.tar.gz"
     step "下载 $zip ..."
     if curl -fsSL "$BASE_URL/$zip" | tar -xz -C "$TOOLS_DIR"; then
         # Ensure launcher script is executable
