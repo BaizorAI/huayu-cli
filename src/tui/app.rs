@@ -20,7 +20,7 @@ pub enum ConnectionStatus {
 impl ConnectionStatus {
     pub fn label(&self) -> &str {
         match self {
-            Self::Connected => "●连接中",
+            Self::Connected => "●已连接",
             Self::NotConfigured => "○未配置",
             Self::AuthError => "✗认证失败",
             Self::NetworkError => "✗服务不可用",

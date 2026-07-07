@@ -1,6 +1,6 @@
-﻿# 华宇 huayu v0.2.3 — AI 编码工作站
+﻿# 华宇 huayu v0.2.3 — AI 客户端
 
-> 华宇 (huayu) 是面向 [baizor.com](https://baizor.com) 的 AI 编码工作站，将 **Codex** 和 **Claude Code** 统一封装为 Rust TUI 终端应用，零外部依赖，一行命令安装即可使用。
+> 华宇 (huayu) 是面向 [baizor.com](https://baizor.com) 的 AI 客户端，将 **Codex** 和 **Claude Code** 统一封装为 Rust TUI 终端应用，零外部依赖，一行命令安装即可使用。
 
 ---
 
@@ -66,7 +66,7 @@ curl -fsSL https://baizor.com/install/huayu.sh | bash
 huayu login        # 浏览器登录 baizor.com，获取 API Key
 huayu status       # 查看工具与配置状态
 huayu update       # 下载/更新 codex + claude
-huayu              # 启动 TUI 工作站
+huayu              # 启动 TUI 客户端
 ```
 
 ---
@@ -99,7 +99,7 @@ huayu              # 启动 TUI 工作站
 
 | 命令 | 说明 |
 |------|------|
-| `huayu` | 启动 TUI 工作站（默认） |
+| `huayu` | 启动 TUI 客户端（默认） |
 | `huayu login` | 打开浏览器完成 baizor.com 登录，自动保存 API Key |
 | `huayu login --key sk-xxx` | 直接指定 API Key 登录（跳过浏览器） |
 | `huayu status` | 查看当前配置、API Key 掩码、工具版本与可用状态 |

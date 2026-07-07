@@ -108,7 +108,7 @@ pub fn execute(args: LoginArgs) -> Result<(), AppError> {
     println!("  Codex 模型: {}", codex_model);
     println!("  Claude 模型: {}", claude_model);
     println!();
-    println!("{}", "运行 `huayu` 启动 TUI 工作台".dimmed());
+    println!("{}", "运行 `huayu` 启动 TUI 客户端".dimmed());
 
     Ok(())
 }

@@ -78,6 +78,7 @@ pub fn parse_event(line: &str) -> ToolEvent {
         return ToolEvent::AuthError;
     }
     if lower.contains("connection refused")
+        || lower.contains("connection error")
         || (lower.contains("network") && lower.contains("error"))
     {
         return ToolEvent::NetworkError;
