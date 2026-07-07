@@ -65,6 +65,16 @@ New-Item -ItemType Directory -Path "$Stage\tools" -Force | Out-Null
 Copy-Item $ExePath "$Stage\huayu.exe" -Force
 Ok "huayu.exe  ($([Math]::Round((Get-Item $ExePath).Length / 1MB, 1)) MB)"
 
+# skills\ (built-in Claude skills + Codex rules)
+$SkillsDir = "$PSScriptRoot\skills"
+if (Test-Path $SkillsDir) {
+    Copy-Item -Path $SkillsDir -Destination "$Stage\skills" -Recurse -Force
+    $skillFiles = @(Get-ChildItem $SkillsDir -Recurse -File)
+    Ok "skills\  ($($skillFiles.Count) files)"
+} else {
+    Warn "skills\ not found at $SkillsDir"
+}
+
 # codex.exe
 $codexExe = "$ToolsDir\codex.exe"
 if (Test-Path $codexExe) {

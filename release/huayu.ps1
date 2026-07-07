@@ -130,6 +130,29 @@ try {
         Write-Ok "bash         ->  $destBash"
     }
 
+    # skills\claude\* → ~/.huayu/claude/skills\
+    # skills\codex\rules.md → ~/.huayu/codex\
+    $skillsDir = Get-ChildItem -Path $extractDir -Filter "skills" -Directory -Recurse |
+                 Select-Object -First 1
+    if ($skillsDir) {
+        # Claude skills
+        $claudeSrc = Join-Path $skillsDir.FullName "claude"
+        if (Test-Path $claudeSrc) {
+            $claudeDst = "$huayuHome\claude\skills"
+            New-Item -ItemType Directory -Path $claudeDst -Force | Out-Null
+            Copy-Item -Path "$claudeSrc\*" -Destination $claudeDst -Force
+            Write-Ok "claude skills ->  $claudeDst"
+        }
+        # Codex rules
+        $codexSrc = Join-Path $skillsDir.FullName "codex"
+        if (Test-Path $codexSrc) {
+            $codexDst = "$huayuHome\codex"
+            New-Item -ItemType Directory -Path $codexDst -Force | Out-Null
+            Copy-Item -Path "$codexSrc\*" -Destination $codexDst -Force
+            Write-Ok "codex rules  ->  $codexDst"
+        }
+    }
+
     # version markers
     [System.IO.File]::WriteAllText("$ToolsDir\huayu.version", $version)
 

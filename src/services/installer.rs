@@ -5,6 +5,7 @@ use std::sync::mpsc;
 // Update only after running integration tests (requires BAIZOR_TEST_API_KEY).
 const CODEX_VERSION: &str = "0.142.5";
 const CLAUDE_VERSION: &str = "1.0.3";
+const SKILLS_VERSION: &str = "0.1.0";
 
 pub fn tools_dir() -> PathBuf {
     crate::config::config_dir().join("tools")
@@ -42,6 +43,8 @@ pub fn local_binary(name: &str) -> Option<PathBuf> {
 pub fn pinned_version(name: &str) -> &'static str {
     match name {
         "claude" => CLAUDE_VERSION,
+        "codex" => CODEX_VERSION,
+        "skills" => SKILLS_VERSION,
         _ => CODEX_VERSION,
     }
 }
@@ -83,6 +86,142 @@ fn tool_archive_url(name: &str, version: &str) -> String {
 const NPM: &str = "npm.cmd";
 #[cfg(not(windows))]
 const NPM: &str = "npm";
+
+/// List installed skill file names for the active tool.
+/// Claude: looks in ~/.huayu/claude/skills/
+/// Codex:  checks ~/.huayu/codex/rules.md
+pub fn list_installed_skills(tool: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    match tool {
+        "claude" => {
+            let dir = crate::config::claude_skills_dir();
+            if let Ok(entries) = std::fs::read_dir(&dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.extension().map(|e| e == "md").unwrap_or(false) {
+                        if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                            out.push(name.to_string());
+                        }
+                    }
+                }
+            }
+        }
+        "codex" => {
+            let path = crate::config::codex_rules_path();
+            if path.exists() {
+                out.push("rules.md".to_string());
+            }
+        }
+        _ => {}
+    }
+    out.sort();
+    out
+}
+
+/// Spawn a background download/install for skills and return a progress receiver.
+pub fn download_skills() -> Result<mpsc::Receiver<String>, String> {
+    let dir = tools_dir();
+    std::fs::create_dir_all(&dir).map_err(|e| format!("无法创建 tools 目录: {e}"))?;
+    let (tx, rx) = mpsc::channel::<String>();
+    std::thread::spawn(move || {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("tokio runtime");
+        rt.block_on(download_skills_async(&tx));
+        let _ = tx.send("__DONE__".to_string());
+    });
+    Ok(rx)
+}
+
+async fn download_skills_async(tx: &mpsc::Sender<String>) {
+    let triple = target_triple();
+    let ext = if cfg!(windows) { "zip" } else { "tar.gz" };
+    let version = SKILLS_VERSION;
+    let url = format!(
+        "https://baizor.com/install/skills-{}-{}.{}",
+        version, triple, ext
+    );
+    let _ = tx.send(format!("[下载] skills {} ...", version));
+    let resp = match reqwest::get(&url).await {
+        Ok(r) if r.status().is_success() => r,
+        Ok(r) => {
+            let _ = tx.send(format!("[错误] skills 下载失败 (HTTP {})", r.status()));
+            return;
+        }
+        Err(e) => {
+            let _ = tx.send(format!("[错误] skills 下载失败: {}", e));
+            return;
+        }
+    };
+    let bytes = match resp.bytes().await {
+        Ok(b) => b,
+        Err(e) => {
+            let _ = tx.send(format!("[错误] 读取响应体失败: {}", e));
+            return;
+        }
+    };
+    let _ = tx.send(format!("[解压] {} KB ...", bytes.len() / 1024));
+
+    // Extract skills: archive contains claude/ and codex/ directories
+    match extract_skills_bundle(&bytes) {
+        Ok(()) => {
+            let ver_path = crate::config::skills_version_path();
+            let _ = std::fs::create_dir_all(ver_path.parent().unwrap());
+            let _ = std::fs::write(&ver_path, version);
+            let _ = tx.send(format!("[完成] skills {} 已安装", version));
+        }
+        Err(e) => {
+            let _ = tx.send(format!("[错误] skills 解压失败: {}", e));
+        }
+    }
+}
+
+/// Extract skills bundle: claude/*.md → ~/.huayu/claude/skills/, codex/* → ~/.huayu/codex/
+fn extract_skills_bundle(data: &[u8]) -> Result<(), String> {
+    let temp = std::env::temp_dir().join(format!("huayu-skills-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&temp).map_err(|e| e.to_string())?;
+    let result = extract_bundle(data, &temp);
+    if result.is_err() {
+        let _ = std::fs::remove_dir_all(&temp);
+        return result;
+    }
+
+    // Copy claude skills
+    let claude_src = temp.join("claude");
+    if claude_src.exists() {
+        let claude_dst = crate::config::claude_skills_dir();
+        std::fs::create_dir_all(&claude_dst).map_err(|e| e.to_string())?;
+        copy_dir_contents(&claude_src, &claude_dst)?;
+    }
+
+    // Copy codex rules
+    let codex_src = temp.join("codex");
+    if codex_src.exists() {
+        let codex_dst = crate::config::codex_home();
+        std::fs::create_dir_all(&codex_dst).map_err(|e| e.to_string())?;
+        copy_dir_contents(&codex_src, &codex_dst)?;
+    }
+
+    let _ = std::fs::remove_dir_all(&temp);
+    Ok(())
+}
+
+/// Copy all files from src dir to dst dir (non-recursive, top-level only).
+fn copy_dir_contents(src: &std::path::Path, dst: &std::path::Path) -> Result<(), String> {
+    for entry in std::fs::read_dir(src).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+        if src_path.is_file() {
+            std::fs::copy(&src_path, &dst_path).map_err(|e| e.to_string())?;
+        } else if src_path.is_dir() {
+            std::fs::create_dir_all(&dst_path).map_err(|e| e.to_string())?;
+            copy_dir_contents(&src_path, &dst_path)?;
+        }
+    }
+    Ok(())
+}
 
 /// Spawn a background download/install for the given tool names and return a progress receiver.
 /// Progress lines are sent on the channel; `"__DONE__"` signals completion.

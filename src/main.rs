@@ -3,6 +3,7 @@ mod command;
 mod config;
 mod error;
 mod services;
+mod skills;
 mod tool;
 mod tui;
 
