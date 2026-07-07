@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 use crate::error::AppError;
 
 const CONFIG_FILE: &str = "config.json";
+const HISTORY_FILE: &str = "history.json";
+const MAX_HISTORY: usize = 50;
 
 /// Per-model metadata returned by the server and cached in config.json.
 /// Used to populate `[model_info]` sections in codex config.toml.
@@ -96,6 +98,36 @@ pub fn config_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("."))
         .join(".huayu")
 }
+/// Path to the persisted input history file.
+pub fn history_path() -> PathBuf {
+    config_dir().join(HISTORY_FILE)
+}
+
+/// Load persisted input history (newest last).
+pub fn load_input_history() -> Vec<String> {
+    let path = history_path();
+    match std::fs::read_to_string(&path) {
+        Ok(text) => {
+            let mut v: Vec<String> = serde_json::from_str(&text).unwrap_or_default();
+            if v.len() > MAX_HISTORY {
+                v.drain(0..v.len() - MAX_HISTORY);
+            }
+            v
+        }
+        Err(_) => Vec::new(),
+    }
+}
+
+/// Persist input history.
+pub fn save_input_history(history: &[String]) {
+    let path = history_path();
+    // Keep only the last MAX_HISTORY entries.
+    let start = history.len().saturating_sub(MAX_HISTORY);
+    if let Ok(text) = serde_json::to_string(&history[start..]) {
+        let _ = std::fs::write(&path, text);
+    }
+}
+
 
 /// Isolated codex config dir used by huayu (injected as CODEX_HOME).
 pub fn codex_home() -> PathBuf {
@@ -362,7 +394,7 @@ mod tests {
         assert!(toml.contains("gpt-5.5"), "config.toml should contain model");
         assert!(toml.contains("model_provider = \"custom\""), "config.toml should contain provider");
         assert!(toml.contains("base_url = \"https://baizor.com/v1\""), "config.toml should contain base_url");
-        assert!(toml.contains("wire_api = \"chat\""), "config.toml should contain wire_api");
+        assert!(toml.contains("wire_api = \"responses\""), "config.toml should contain wire_api");
         let auth: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(home.join("auth.json")).unwrap()).unwrap();
         assert_eq!(auth["OPENAI_API_KEY"].as_str().unwrap(), "sk-codex-key");

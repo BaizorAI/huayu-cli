@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# package-linux.sh — Build huayu for Linux and bundle codex+claude as tar.gz
+# package-linux.sh 鈥?Build huayu for Linux and bundle codex+claude as tar.gz
 # Run on Linux (baizor server, WSL, or CI)
 #
 # Outputs to ./release/:
@@ -20,8 +20,18 @@ RELEASE_DIR="$SCRIPT_DIR/release"
 WORK_DIR=$(mktemp -d)
 trap 'rm -rf "$WORK_DIR"' EXIT
 
-CODEX_VERSION="0.142.5"
-CLAUDE_VERSION="1.0.3"
+# Read versions from versions.json (single source of truth)
+VERSIONS_FILE="$SCRIPT_DIR/versions.json"
+if [ -f "$VERSIONS_FILE" ] && command -v python3 &>/dev/null; then
+    CODEX_VERSION=$(python3 -c "import json; print(json.load(open('$VERSIONS_FILE'))['codex'])")
+    CLAUDE_VERSION=$(python3 -c "import json; print(json.load(open('$VERSIONS_FILE'))['claude'])")
+elif [ -f "$VERSIONS_FILE" ] && command -v jq &>/dev/null; then
+    CODEX_VERSION=$(jq -r '.codex' "$VERSIONS_FILE")
+    CLAUDE_VERSION=$(jq -r '.claude' "$VERSIONS_FILE")
+else
+    CODEX_VERSION="0.142.5"
+    CLAUDE_VERSION="1.0.3"
+fi
 NODE_VERSION="20.19.2"
 
 SKIP_BUILD=false
@@ -33,39 +43,39 @@ for arg in "$@"; do
     esac
 done
 
-# ── helpers ────────────────────────────────────────────────────────────────
+# 鈹€鈹€ helpers 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 step()  { echo "  $*"; }
 ok()    { echo "  [ok] $*"; }
 warn()  { echo "  [!]  $*"; }
 fail()  { echo -e "\n  [error] $*\n" >&2; exit 1; }
 
-need_cmd() { command -v "$1" &>/dev/null || fail "需要 $1 — 请先安装"; }
+need_cmd() { command -v "$1" &>/dev/null || fail "闇€瑕?$1 鈥?璇峰厛瀹夎"; }
 need_cmd curl
 need_cmd tar
 
 echo ""
 echo "  huayu Linux packager"
-echo "  ─────────────────────────────────────────────────────"
+echo "  鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€"
 
 mkdir -p "$RELEASE_DIR"
 
-# ── detect arch ────────────────────────────────────────────────────────────
+# 鈹€鈹€ detect arch 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 ARCH=$(uname -m)
 case "$ARCH" in
     x86_64)          TRIPLE="x86_64-unknown-linux-gnu"    NODE_ARCH="x64"  ;;
     aarch64|arm64)   TRIPLE="aarch64-unknown-linux-gnu"   NODE_ARCH="arm64" ;;
-    *) fail "不支持的架构: $ARCH" ;;
+    *) fail "涓嶆敮鎸佺殑鏋舵瀯: $ARCH" ;;
 esac
-step "目标架构: $TRIPLE"
+step "鐩爣鏋舵瀯: $TRIPLE"
 
-# ── cargo build ────────────────────────────────────────────────────────────
+# 鈹€鈹€ cargo build 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 if [ "$SKIP_BUILD" = false ]; then
     need_cmd cargo
     step "cargo build --release ..."
     if command -v cross &>/dev/null; then
         cross build --release --target "$TRIPLE"
     else
-        # Plain cargo — assumes musl target is installed:
+        # Plain cargo 鈥?assumes musl target is installed:
         #   rustup target add x86_64-unknown-linux-musl
         cargo build --release --target "$TRIPLE"
     fi
@@ -73,15 +83,15 @@ if [ "$SKIP_BUILD" = false ]; then
 else
     # Try to find pre-built binary
     BINARY="$SCRIPT_DIR/target/$TRIPLE/release/huayu"
-    [ -f "$BINARY" ] || fail "Binary not found at $BINARY — run without --skip-build first"
+    [ -f "$BINARY" ] || fail "Binary not found at $BINARY 鈥?run without --skip-build first"
 fi
 
 VERSION=$("$BINARY" --version 2>&1 | awk '{print $NF}')
-[ -n "$VERSION" ] || fail "无法从 binary 读取版本"
+[ -n "$VERSION" ] || fail "鏃犳硶浠?binary 璇诲彇鐗堟湰"
 ok "huayu $VERSION  ($TRIPLE)"
 
-# ── bundle huayu binary ──────────────────────────────────────────────────
-step "打包 huayu-$VERSION-$TRIPLE.tar.gz ..."
+# 鈹€鈹€ bundle huayu binary 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+step "鎵撳寘 huayu-$VERSION-$TRIPLE.tar.gz ..."
 HUAZHEN_STAGE="$WORK_DIR/huayu"
 mkdir -p "$HUAZHEN_STAGE"
 cp "$BINARY" "$HUAZHEN_STAGE/huayu"
@@ -90,7 +100,7 @@ tar -czf "$RELEASE_DIR/huayu-$VERSION-$TRIPLE.tar.gz" -C "$HUAZHEN_STAGE" huayu
 echo "$VERSION" > "$RELEASE_DIR/huayu-version.txt"
 ok "huayu-$VERSION-$TRIPLE.tar.gz"
 
-# ── portable Node.js ───────────────────────────────────────────────────────
+# 鈹€鈹€ portable Node.js 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 if [ "$SKIP_TOOLS" = false ]; then
     need_cmd npm
 
@@ -98,13 +108,13 @@ if [ "$SKIP_TOOLS" = false ]; then
     NODE_URL="https://nodejs.org/dist/v$NODE_VERSION/$NODE_TGZ"
     NODE_DIR="$WORK_DIR/nodejs"
 
-    step "下载 Node.js $NODE_VERSION ..."
+    step "涓嬭浇 Node.js $NODE_VERSION ..."
     curl -fsSL "$NODE_URL" | tar -xz -C "$WORK_DIR"
     NODE_EXE=$(find "$WORK_DIR" -name "node" -type f | head -1)
     [ -f "$NODE_EXE" ] || fail "node binary not found in Node.js archive"
     ok "node  ($([[ -n "$NODE_EXE" ]] && du -sh "$NODE_EXE" | cut -f1))"
 
-    # ── helper: bundle one tool ────────────────────────────────────────────
+    # 鈹€鈹€ helper: bundle one tool 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
     build_tool_bundle() {
         local name="$1"
         local version="$2"
@@ -142,7 +152,7 @@ if [ "$SKIP_TOOLS" = false ]; then
 exec "\$(dirname "\$0")/../../node" "\$(dirname "\$0")/../../$entry_path" "\$@"
 EOF
         chmod +x "$bin_scripts/$name"
-        ok "$name launcher → node + $entry_path"
+        ok "$name launcher 鈫?node + $entry_path"
 
         # Version marker
         echo "$version" > "$pkg_dir/$name.version"
@@ -166,11 +176,11 @@ EOF
     build_tool_bundle "claude" "$CLAUDE_VERSION" "@anthropic-ai/claude-code"
 fi
 
-# ── done ───────────────────────────────────────────────────────────────────
+# 鈹€鈹€ done 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 echo ""
-echo "  ─────────────────────────────────────────────────────"
-echo "  release/ 内容:"
+echo "  鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€"
+echo "  release/ 鍐呭:"
 ls -lh "$RELEASE_DIR"/*.tar.gz "$RELEASE_DIR"/*.txt 2>/dev/null | awk '{print "    "$NF, $5}'
 echo ""
-echo "  下一步: bash deploy.sh"
+echo "  涓嬩竴姝? bash deploy.sh"
 echo ""

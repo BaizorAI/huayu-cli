@@ -91,6 +91,10 @@ pub struct App {
     pub recent_commands: Vec<String>,
 
     pub should_quit: bool,
+
+    /// Debug mode: true shows verbose output (endpoint, key mask, input echo).
+    /// Set via DEBUG env var; defaults to cfg!(debug_assertions).
+    pub debug: bool,
 }
 
 impl App {
@@ -109,12 +113,12 @@ impl App {
         for tool in [ToolType::Codex, ToolType::Claude] {
             let name = tool.binary();
             if !tool.is_available() {
-                startup_lines.push(format!("[提示] {} 未找到 — 运行 /update 下载工具", name));
+                startup_lines.push(format!("[!] {} 未安装  /update下载", name));
             } else if crate::services::installer::local_binary(name).is_some()
                 && !crate::services::installer::is_current_version(name)
             {
                 startup_lines.push(format!(
-                    "[更新] {} 可更新至 {} — 运行 /update",
+                    "[↻] {} → {}  /update",
                     name,
                     crate::services::installer::pinned_version(name)
                 ));
@@ -132,7 +136,7 @@ impl App {
             auto_scroll: true,
             input: String::new(),
             cursor_pos: 0,
-            input_history: Vec::new(),
+            input_history: crate::config::load_input_history(),
             history_cursor: None,
             input_draft: String::new(),
             task_start: None,
@@ -142,6 +146,16 @@ impl App {
             settings_model_input,
             settings_url_input,
             settings_focus_field: 0,
+            debug: {
+                let v = std::env::var("DEBUG").unwrap_or_default();
+                if v.eq_ignore_ascii_case("true") || v == "1" {
+                    true
+                } else if v.eq_ignore_ascii_case("false") || v == "0" {
+                    false
+                } else {
+                    cfg!(debug_assertions)
+                }
+            },
             recent_commands: Vec::new(),
             should_quit: false,
         }
@@ -241,6 +255,34 @@ impl App {
         // When auto_scroll=true, scroll_offset stays 0 and the view follows the latest line
     }
 
+    /// Skip pure-spinner / decorative / progress-indicator lines in non-debug mode.
+    fn is_noise_line(&self, s: &str) -> bool {
+        if self.debug {
+            return false;
+        }
+        let s = s.trim();
+        if s.is_empty() {
+            return true;
+        }
+        // Single-char spinners
+        let chars: Vec<char> = s.chars().collect();
+        if chars.len() <= 2 {
+            for ch in &chars {
+                if ch.is_alphanumeric() || ch.is_whitespace() {
+                    continue;
+                }
+                return true;
+            }
+        }
+        // >60% non-alphanumeric -> decorative separator / progress bar
+        let total = chars.len().max(1) as f32;
+        let meaningful = chars.iter().filter(|c| c.is_alphanumeric() || c.is_whitespace()).count() as f32;
+        if meaningful / total < 0.4 {
+            return true;
+        }
+        false
+    }
+
     pub fn push_output(&mut self, line: impl Into<String>) {
         self.push_main(line);
     }
@@ -258,9 +300,22 @@ impl App {
             return;
         };
 
+        let mut last_line: Option<String> = None;
         for ev in events {
             match &ev {
-                ToolEvent::Line(s) => self.push_main(s.clone()),
+                ToolEvent::Line(s) => {
+                    if self.is_noise_line(s) {
+                        continue;
+                    }
+                    // Collapse consecutive duplicate lines
+                    if let Some(ref last) = last_line {
+                        if last == s {
+                            continue;
+                        }
+                    }
+                    last_line = Some(s.clone());
+                    self.push_main(s.clone());
+                }
                 ToolEvent::FileWritten(s) => {
                     self.push_main(format!("[文件] {}", s));
                 }
@@ -616,6 +671,7 @@ impl App {
                 if self.input_history.len() > 50 {
                     self.input_history.remove(0);
                 }
+                crate::config::save_input_history(&self.input_history);
             }
         }
 
@@ -623,7 +679,9 @@ impl App {
         if let Some(proc) = &mut self.tool_process {
             let line = format!("{}\n", input);
             proc.write_input(&line);
-            self.push_main(format!("▷ {}", input));
+            if self.debug {
+                self.push_main(format!("▷ {}", input));
+            }
             return;
         }
 
@@ -650,11 +708,13 @@ impl App {
             } else {
                 "***".to_string()
             };
-            self.push_main(format!(
-                "  endpoint: {}/v1  key: {}",
-                self.config.base_url.trim_end_matches('/'),
-                masked
-            ));
+            if self.debug {
+                self.push_main(format!(
+                    "  endpoint: {}/v1  key: {}",
+                    self.config.base_url.trim_end_matches('/'),
+                    masked
+                ));
+            }
         }
 
         let codex_model = crate::config::effective_codex_model(&self.config).to_string();

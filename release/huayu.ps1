@@ -17,6 +17,7 @@ $BaseUrl     = "https://baizor.com/install"
 $huayuHome = "$env:USERPROFILE\.huayu"
 $BinDir      = "$huayuHome\bin"
 $ToolsDir    = "$huayuHome\tools"
+$CacheDir    = "$huayuHome\cache"
 
 # ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -51,25 +52,34 @@ try {
 
 Write-Ok "Latest version: $version"
 
-# ── Download bundle ────────────────────────────────────────────────────────
+# ── Download bundle (cached) ───────────────────────────────────────────────
 
-$zipName    = "huayu-x86_64-pc-windows-msvc.zip"
+New-Item -ItemType Directory -Path $CacheDir -Force | Out-Null
+
+$zipName     = "huayu-x86_64-pc-windows-msvc.zip"
+$cacheZip    = "$CacheDir\huayu-$version-x86_64-pc-windows-msvc.zip"
 $downloadUrl = "$BaseUrl/$zipName"
 
-$tempDir = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), [System.Guid]::NewGuid())
-New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
-$zipPath = "$tempDir\$zipName"
-
-Write-Step "Downloading $zipName ..."
-try {
-    Invoke-WebRequest -Uri $downloadUrl -OutFile $zipPath -UseBasicParsing
-} catch {
-    Remove-Item -Recurse -Force $tempDir -ErrorAction SilentlyContinue
-    Fail "Download failed: $_`n       URL: $downloadUrl"
+if (Test-Path $cacheZip) {
+    $sizeMb = [Math]::Round((Get-Item $cacheZip).Length / 1MB, 1)
+    Write-Ok "Using cached $([System.IO.Path]::GetFileName($cacheZip)) (${sizeMb} MB)"
+    $zipPath = $cacheZip
+} else {
+    Write-Step "Downloading $zipName ..."
+    try {
+        Invoke-WebRequest -Uri $downloadUrl -OutFile $cacheZip -UseBasicParsing
+    } catch {
+        Remove-Item $cacheZip -ErrorAction SilentlyContinue
+        Fail "Download failed: $_`n       URL: $downloadUrl"
+    }
+    $sizeMb = [Math]::Round((Get-Item $cacheZip).Length / 1MB, 1)
+    Write-Ok "Downloaded ${sizeMb} MB"
+    # Clean old cached versions
+    Get-ChildItem "$CacheDir\huayu-*-x86_64-pc-windows-msvc.zip" -ErrorAction SilentlyContinue |
+        Where-Object { $_.FullName -ne $cacheZip } |
+        Remove-Item -Force -ErrorAction SilentlyContinue
+    $zipPath = $cacheZip
 }
-
-$sizeMb = [Math]::Round((Get-Item $zipPath).Length / 1MB, 1)
-Write-Ok "Downloaded ${sizeMb} MB"
 
 # ── Extract ────────────────────────────────────────────────────────────────
 
@@ -79,7 +89,7 @@ New-Item -ItemType Directory -Path $BinDir   -Force | Out-Null
 New-Item -ItemType Directory -Path $ToolsDir -Force | Out-Null
 
 try {
-    $extractDir = "$tempDir\extracted"
+    $extractDir = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), "huayu-extract-" + [System.Guid]::NewGuid())
     Expand-Archive -Path $zipPath -DestinationPath $extractDir -Force
 
     # huayu.exe → bin\
@@ -114,10 +124,9 @@ try {
     [System.IO.File]::WriteAllText("$ToolsDir\huayu.version", $version)
 
 } catch {
-    Remove-Item -Recurse -Force $tempDir -ErrorAction SilentlyContinue
     Fail "Extraction failed: $_"
 } finally {
-    Remove-Item -Recurse -Force $tempDir -ErrorAction SilentlyContinue
+    Remove-Item -Recurse -Force $extractDir -ErrorAction SilentlyContinue
 }
 
 # ── PATH ───────────────────────────────────────────────────────────────────
@@ -138,20 +147,36 @@ $env:PATH = "$env:PATH;$BinDir"
 # ── Auto-install tools (codex + claude from baizor.com) ────────────────────
 
 function Install-Tool([string]$Name, [string]$ToolVersion) {
-    $zipName = "$Name-$ToolVersion-x86_64-pc-windows-msvc.zip"
-    $url     = "$BaseUrl/$zipName"
-    $tmpZip  = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), $zipName)
-    Write-Step "Downloading $zipName ..."
+    $zipName  = "$Name-$ToolVersion-x86_64-pc-windows-msvc.zip"
+    $cacheZip = "$CacheDir\$zipName"
+    $url      = "$BaseUrl/$zipName"
+
+    if (Test-Path $cacheZip) {
+        $sizeMb = [Math]::Round((Get-Item $cacheZip).Length / 1MB, 1)
+        Write-Ok "Using cached $zipName (${sizeMb} MB)"
+    } else {
+        Write-Step "Downloading $zipName ..."
+        try {
+            Invoke-WebRequest -Uri $url -OutFile $cacheZip -UseBasicParsing
+        } catch {
+            Remove-Item $cacheZip -ErrorAction SilentlyContinue
+            Write-Warn "$Name download failed: $($_.Exception.Message)"
+            Write-Host "    Run 'huayu update' after launch to retry." -ForegroundColor DarkGray
+            return
+        }
+        Write-Ok "Downloaded $zipName"
+        # Clean old cached versions for this tool
+        Get-ChildItem "$CacheDir\$Name-*-x86_64-pc-windows-msvc.zip" -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -ne $cacheZip } |
+            Remove-Item -Force -ErrorAction SilentlyContinue
+    }
+
     try {
-        Invoke-WebRequest -Uri $url -OutFile $tmpZip -UseBasicParsing
         Write-Step "Extracting $Name $ToolVersion ..."
-        Expand-Archive -Path $tmpZip -DestinationPath $ToolsDir -Force
+        Expand-Archive -Path $cacheZip -DestinationPath $ToolsDir -Force
         Write-Ok "$Name $ToolVersion"
     } catch {
-        Write-Warn "$Name download failed: $($_.Exception.Message)"
-        Write-Host "    Run 'huayu update' after launch to retry." -ForegroundColor DarkGray
-    } finally {
-        Remove-Item $tmpZip -ErrorAction SilentlyContinue
+        Write-Warn "$Name extraction failed: $($_.Exception.Message)"
     }
 }
 

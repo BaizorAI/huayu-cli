@@ -1,4 +1,4 @@
-# package-tools.ps1 — Bundle codex + claude with portable Node.js for Windows
+# package-tools.ps1 鈥?Bundle codex + claude with portable Node.js for Windows
 # Outputs zips to .\release\ then run deploy.sh to push to baizor.com
 #
 # Structure per tool zip:
@@ -20,10 +20,18 @@ $ErrorActionPreference = 'Stop'
 $Triple        = "x86_64-pc-windows-msvc"
 $ReleaseDir    = "$PSScriptRoot\release"
 $WorkDir       = [System.IO.Path]::Combine($env:TEMP, "huayu-tools-$([System.Guid]::NewGuid())")
-$CodexVersion  = "0.142.5"
-$ClaudeVersion = "1.0.3"
+# Read versions from versions.json (single source of truth)
+$_versionsFile = "$PSScriptRoot\versions.json"
+if (Test-Path $_versionsFile) {
+    $_v = Get-Content $_versionsFile -Raw | ConvertFrom-Json
+    $CodexVersion  = $_v.codex
+    $ClaudeVersion = $_v.claude
+} else {
+    $CodexVersion  = "0.142.5"
+    $ClaudeVersion = "1.0.3"
+}
 
-# Node.js LTS portable — this becomes node.exe bundled inside each tool zip
+# Node.js LTS portable 鈥?this becomes node.exe bundled inside each tool zip
 $NodeVersion   = "20.19.2"
 $NodeZipUrl    = "https://nodejs.org/dist/v$NodeVersion/node-v$NodeVersion-win-x64.zip"
 
@@ -33,11 +41,11 @@ function Warn([string]$msg) { Write-Host "  [!]  $msg" -ForegroundColor Yellow }
 function Fail([string]$msg) { Write-Host "`n  [error] $msg`n" -ForegroundColor Red; exit 1 }
 
 Write-Host ""
-Write-Host "  huayu tool bundler — Windows x64" -ForegroundColor White
-Write-Host "  ─────────────────────────────────────────────────────" -ForegroundColor DarkGray
+Write-Host "  huayu tool bundler 鈥?Windows x64" -ForegroundColor White
+Write-Host "  鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€" -ForegroundColor DarkGray
 
 if (-not (Get-Command "npm" -ErrorAction SilentlyContinue)) {
-    Fail "npm not found — install Node.js from https://nodejs.org"
+    Fail "npm not found 鈥?install Node.js from https://nodejs.org"
 }
 
 New-Item -ItemType Directory -Path $WorkDir    -Force | Out-Null
@@ -46,7 +54,7 @@ New-Item -ItemType Directory -Path $ReleaseDir -Force | Out-Null
 try {
     Set-Location $WorkDir
 
-    # ── Download portable Node.js and extract node.exe ──────────────────────
+    # 鈹€鈹€ Download portable Node.js and extract node.exe 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
     Step "Downloading portable Node.js $NodeVersion ..."
     $nodeZipPath = "$WorkDir\node.zip"
     Invoke-WebRequest -Uri $NodeZipUrl -OutFile $nodeZipPath -UseBasicParsing
@@ -57,7 +65,7 @@ try {
     $nodeExePath = $nodeExe.FullName
     Ok "node.exe  ($([Math]::Round((Get-Item $nodeExePath).Length / 1MB, 1)) MB)"
 
-    # ── Helper: build one tool zip ──────────────────────────────────────────
+    # 鈹€鈹€ Helper: build one tool zip 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
     function Build-ToolZip {
         param(
             [string]$Name,
@@ -70,7 +78,7 @@ try {
         New-Item -ItemType Directory $pkgDir -Force | Out-Null
 
         # --ignore-scripts: skip preinstall/postinstall (claude blocks Windows in preinstall)
-        # --omit=optional: skip optional native deps — only for claude (sharp etc.)
+        # --omit=optional: skip optional native deps 鈥?only for claude (sharp etc.)
         #                  codex NEEDS @openai/codex-win32-x64 (optional) for its native binary
         $npmArgs = @("install", "--prefix", $pkgDir, "--ignore-scripts")
         if ($OmitOptional) { $npmArgs += "--omit=optional" }
@@ -99,7 +107,7 @@ try {
         $pkgRelDir = (Split-Path $pkgJsonCandidates -Parent) -replace [regex]::Escape("$pkgDir\node_modules\"), ""
         $entryRelPath = "node_modules\$pkgRelDir\$binEntry" -replace "/", "\"
 
-        # Create launcher .cmd — uses paths relative to its own location (%~dp0)
+        # Create launcher .cmd 鈥?uses paths relative to its own location (%~dp0)
         # .cmd lives at node_modules\.bin\{name}.cmd
         # %~dp0 = tools\node_modules\.bin\   so ..\..\ = tools\
         $binDir = "$pkgDir\node_modules\.bin"
@@ -107,7 +115,7 @@ try {
         $launcher  = "@echo off`r`n"
         $launcher += "`"%~dp0..\..\node.exe`" `"%~dp0..\..\$entryRelPath`" %*`r`n"
         [System.IO.File]::WriteAllText("$binDir\$Name.cmd", $launcher)
-        Ok "$Name.cmd launcher → node.exe + $entryRelPath"
+        Ok "$Name.cmd launcher 鈫?node.exe + $entryRelPath"
 
         # Version marker
         [System.IO.File]::WriteAllText("$pkgDir\$Name.version", $Version)
@@ -130,7 +138,7 @@ try {
         Ok "$Name-$Version-$Triple.zip  ($([Math]::Round((Get-Item $zipPath).Length / 1MB, 1)) MB)"
     }
 
-    # ── Build tool zips ─────────────────────────────────────────────────────
+    # 鈹€鈹€ Build tool zips 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
     Build-ToolZip -Name "codex"  -Version $CodexVersion  -NpmPkg "@openai/codex@$CodexVersion"           -OmitOptional $false
     Build-ToolZip -Name "claude" -Version $ClaudeVersion -NpmPkg "@anthropic-ai/claude-code@$ClaudeVersion" -OmitOptional $true
 
@@ -140,7 +148,7 @@ try {
 }
 
 Write-Host ""
-Write-Host "  ─────────────────────────────────────────────────────" -ForegroundColor DarkGray
+Write-Host "  鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€" -ForegroundColor DarkGray
 Write-Host "  release\ tool zips:" -ForegroundColor Green
 Get-ChildItem "$ReleaseDir\codex-*.zip", "$ReleaseDir\claude-*.zip" -ErrorAction SilentlyContinue |
     ForEach-Object { Write-Host "    $($_.Name.PadRight(50)) $([Math]::Round($_.Length/1MB,1)) MB" }
