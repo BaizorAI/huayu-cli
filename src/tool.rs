@@ -228,7 +228,8 @@ pub fn spawn(
             c.arg(&full_prompt);
             c.env("CLAUDE_CONFIG_DIR", claude_config_dir.as_os_str());
             c.env("ANTHROPIC_AUTH_TOKEN", api_key);
-            c.env("ANTHROPIC_BASE_URL", api_endpoint.as_str());
+            // Claude Code appends /v1 internally — pass the bare base URL.
+            c.env("ANTHROPIC_BASE_URL", base_url.trim_end_matches('/'));
             #[cfg(windows)]
             if std::env::var_os("SHELL").is_none() {
                 for candidate in [

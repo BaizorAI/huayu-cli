@@ -253,9 +253,12 @@ pub fn write_claude_config(cfg: &HuayuConfig) -> Result<(), AppError> {
     // bypassPermissionsModeAccepted=true pre-accepts the --dangerously-skip-permissions
     // prompt so claude can run non-interactively in huayu's PTY. Without this,
     // claude refuses with "must be accepted in an interactive session first".
+    // primaryApiKey="any" tells Claude Code to accept the ANTHROPIC_AUTH_TOKEN
+    // without requiring an OAuth session, which is essential for third-party API gateways.
     let cli_config = serde_json::json!({
         "bypassPermissionsModeAccepted": true,
         "hasCompletedOnboarding": true,
+        "primaryApiKey": "any",
     });
     std::fs::write(
         dir.join("config.json"),
@@ -263,12 +266,14 @@ pub fn write_claude_config(cfg: &HuayuConfig) -> Result<(), AppError> {
     )
     .map_err(AppError::Io)?;
 
+    // ANTHROPIC_BASE_URL must NOT include "/v1" — Claude Code appends it internally.
+    // Using "https://example.com/v1" would produce "https://example.com/v1/v1/messages".
     let settings = serde_json::json!({
         "bypassPermissionsModeAccepted": true,
         "hasCompletedOnboarding": true,
         "env": {
             "ANTHROPIC_AUTH_TOKEN": cfg.api_key,
-            "ANTHROPIC_BASE_URL": format!("{}/v1", base),
+            "ANTHROPIC_BASE_URL": base,
             "ANTHROPIC_MODEL": model,
         }
     });
@@ -430,7 +435,7 @@ mod tests {
         let val: serde_json::Value = serde_json::from_str(&raw).unwrap();
         let env = &val["env"];
         assert_eq!(env["ANTHROPIC_AUTH_TOKEN"].as_str().unwrap(), "sk-claude-key");
-        assert_eq!(env["ANTHROPIC_BASE_URL"].as_str().unwrap(), "https://baizor.com/v1");
+        assert_eq!(env["ANTHROPIC_BASE_URL"].as_str().unwrap(), "https://baizor.com");
         assert_eq!(env["ANTHROPIC_MODEL"].as_str().unwrap(), "claude-test");
         assert_eq!(val["bypassPermissionsModeAccepted"].as_bool().unwrap(), true);
 
@@ -438,6 +443,7 @@ mod tests {
         let cli_config: serde_json::Value = serde_json::from_str(&cli_raw).unwrap();
         assert_eq!(cli_config["bypassPermissionsModeAccepted"].as_bool().unwrap(), true);
         assert_eq!(cli_config["hasCompletedOnboarding"].as_bool().unwrap(), true);
+        assert_eq!(cli_config["primaryApiKey"].as_str().unwrap(), "any");
     }
 
     #[test]
