@@ -6,6 +6,49 @@ use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 
 use crate::error::AppError;
 
+// ── Shell discovery ───────────────────────────────────────────────────────
+
+/// Find a POSIX-compatible shell (bash) on Windows.
+/// Search order: huayu tools dir → well-known Git/MSYS2/Cygwin paths → PATH.
+#[cfg(windows)]
+pub fn find_bash() -> Option<PathBuf> {
+    // 1. Bundled bash in huayu tools dir
+    let tools = crate::services::installer::tools_dir();
+    let tools_bash = tools.join("bash").join("bash.exe");
+    if tools_bash.exists() {
+        return Some(tools_bash);
+    }
+    // Also check tools/git/bin/bash.exe (if we bundle a minimal Git)
+    let tools_git_bash = tools.join("git").join("bin").join("bash.exe");
+    if tools_git_bash.exists() {
+        return Some(tools_git_bash);
+    }
+
+    // 2. Well-known system install paths
+    for candidate in [
+        r"C:\Program Files\Git\bin\bash.exe",
+        r"C:\Program Files\Git\usr\bin\bash.exe",
+        r"C:\msys64\usr\bin\bash.exe",
+        r"C:\cygwin64\bin\bash.exe",
+    ] {
+        let p = std::path::Path::new(candidate);
+        if p.exists() {
+            return Some(p.to_path_buf());
+        }
+    }
+
+    // 3. PATH fallback
+    which::which("bash").ok()
+}
+
+#[cfg(not(windows))]
+pub fn find_bash() -> Option<PathBuf> {
+    std::env::var_os("SHELL")
+        .map(PathBuf::from)
+        .or_else(|| which::which("bash").ok())
+        .or_else(|| Some(PathBuf::from("/bin/sh")))
+}
+
 // ── Tool type ──────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -39,15 +82,26 @@ impl ToolType {
     /// Preferred binary: local huayu install first, then system PATH.
     pub fn binary_path(&self) -> PathBuf {
         if let Some(local) = crate::services::installer::local_binary(self.binary()) {
+            #[cfg(windows)]
+            if local.extension().is_some_and(|e| e == "cmd") {
+                if let Some(exe) = resolve_cmd_target(&local) {
+                    return exe;
+                }
+            }
             return local;
         }
-        // Fallback: search PATH. On Windows, prefer .cmd/.exe wrappers
-        // over bare script files (CreateProcessW cannot execute them).
+        // Fallback: search PATH. On Windows, prefer .exe over .cmd.
+        // ConPTY + cmd.exe /c swallows output, so resolve .cmd → inner .exe.
         #[cfg(windows)]
         {
-            for ext in ["cmd", "exe", "ps1"] {
+            for ext in ["exe", "cmd", "ps1"] {
                 let name_ext = format!("{}.{}", self.binary(), ext);
                 if let Ok(found) = which::which(&name_ext) {
+                    if found.extension().is_some_and(|e| e == "cmd") {
+                        if let Some(exe) = resolve_cmd_target(&found) {
+                            return exe;
+                        }
+                    }
                     return found;
                 }
             }
@@ -62,6 +116,50 @@ impl ToolType {
         crate::services::installer::local_binary(self.binary()).is_some()
             || which::which(self.binary()).is_ok()
     }
+}
+
+// ── .cmd wrapper resolution ───────────────────────────────────────────────
+
+/// Parse an npm-generated `.cmd` wrapper and resolve the actual `.exe` it calls.
+///
+/// npm's global `.cmd` wrappers follow a standard pattern:
+/// ```bat
+/// @ECHO off
+/// ...
+/// SET dp0=%~dp0
+/// ...
+/// "%dp0%\node_modules\...\bin\tool.exe"   %*
+/// ```
+/// We extract the `%dp0%\...\tool.exe` path, resolve `%dp0%` to the `.cmd`
+/// file's parent directory, and return the result if the `.exe` exists.
+#[cfg(windows)]
+fn resolve_cmd_target(cmd_path: &std::path::Path) -> Option<PathBuf> {
+    let content = std::fs::read_to_string(cmd_path).ok()?;
+    let dir = cmd_path.parent()?;
+
+    for line in content.lines() {
+        let trimmed = line.trim().trim_matches('"');
+        // Look for lines containing %dp0% and .exe (the target binary call)
+        if trimmed.contains("%dp0%") && trimmed.to_lowercase().contains(".exe") {
+            // Extract the path part: strip quotes and %* args
+            let path_part = line
+                .trim()
+                .trim_start_matches('"')
+                .split("%*")
+                .next()?
+                .trim()
+                .trim_end_matches('"')
+                .trim();
+
+            // Replace %dp0% with the actual directory
+            let resolved = path_part.replace("%dp0%\\", "").replace("%dp0%/", "");
+            let target = dir.join(&resolved);
+            if target.exists() {
+                return Some(target);
+            }
+        }
+    }
+    None
 }
 
 // ── Tool event ─────────────────────────────────────────────────────────────
@@ -268,25 +366,8 @@ pub fn spawn(
             // portable_pty may not inherit the parent environment on all code paths.
             #[cfg(windows)]
             {
-                let mut shell_set = false;
-                for candidate in [
-                    r"C:\Program Files\Git\bin\bash.exe",
-                    r"C:\Program Files\Git\usr\bin\bash.exe",
-                    r"C:\msys64\usr\bin\bash.exe",
-                    r"C:\cygwin64\bin\bash.exe",
-                ] {
-                    let shell = std::path::Path::new(candidate);
-                    if shell.exists() {
-                        c.env("SHELL", shell.as_os_str());
-                        shell_set = true;
-                        break;
-                    }
-                }
-                if !shell_set {
-                    // Last resort: look for bash on PATH
-                    if let Ok(bash) = which::which("bash") {
-                        c.env("SHELL", bash.as_os_str());
-                    }
+                if let Some(bash) = find_bash() {
+                    c.env("SHELL", bash.as_os_str());
                 }
             }
             if let Some(ref d) = cwd {
@@ -301,7 +382,24 @@ pub fn spawn(
     let binary_path_str = tool.binary_path().display().to_string();
     let base_url_str = base_url.to_string();
     let model_str = model.to_string();
-    let shell_str = std::env::var("SHELL").unwrap_or_else(|_| "(not set)".to_string());
+    let config_dir_str = match tool {
+        ToolType::Claude => claude_config_dir.display().to_string(),
+        ToolType::Codex => codex_home.display().to_string(),
+    };
+    // Read the SHELL we actually set on the child command.
+    let child_shell_str = find_bash()
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|| "(none found!)".to_string());
+    let prompt_preview = if full_prompt.len() > 80 {
+        format!("{}...", &full_prompt[..80])
+    } else {
+        full_prompt.clone()
+    };
+    let api_key_masked = if api_key.len() > 12 {
+        format!("{}...{}", &api_key[..6], &api_key[api_key.len() - 4..])
+    } else {
+        "***".to_string()
+    };
 
     let mut child = slave.spawn_command(cmd).map_err(|e| {
         let s = e.to_string().to_lowercase();
@@ -342,30 +440,63 @@ pub fn spawn(
         // Log spawn details for debugging.
         if let Some(f) = &mut log_file {
             let _ = writeln!(f, "");
-            let _ = writeln!(f, "=== spawn {} ===", tool_label);
-            let _ = writeln!(f, "  binary: {}", binary_path_str);
-            let _ = writeln!(f, "  model:  {}", model_str);
-            let _ = writeln!(f, "  base:   {}", base_url_str);
-            let _ = writeln!(f, "  shell:  {}", shell_str);
-            let _ = writeln!(f, "  pid:    {:?}", process_id);
+            let _ = writeln!(f, "=== spawn {} @ {} ===",
+                tool_label,
+                chrono::Local::now().format("%Y-%m-%d %H:%M:%S"));
+            let _ = writeln!(f, "  binary:     {}", binary_path_str);
+            let _ = writeln!(f, "  model:      {}", model_str);
+            let _ = writeln!(f, "  base_url:   {}", base_url_str);
+            let _ = writeln!(f, "  config_dir: {}", config_dir_str);
+            let _ = writeln!(f, "  shell:      {}", child_shell_str);
+            let _ = writeln!(f, "  api_key:    {}", api_key_masked);
+            let _ = writeln!(f, "  prompt:     {}", prompt_preview);
+            let _ = writeln!(f, "  pid:        {:?}", process_id);
+            let _ = writeln!(f, "  cwd:        {}",
+                std::env::current_dir()
+                    .map(|p| p.display().to_string())
+                    .unwrap_or_else(|_| "(unknown)".to_string()));
         }
 
         let _master_keep = master;
         let mut line_count: u32 = 0;
-        for line in std::io::BufReader::new(reader).lines().flatten() {
-            let clean = strip_ansi(&line);
-            let trimmed = clean.trim();
-            if !trimmed.is_empty() {
-                line_count += 1;
-                if let Some(f) = &mut log_file {
-                    let _ = writeln!(f, "  [{}] {}", line_count, trimmed);
+        let mut err_count: u32 = 0;
+        let read_start = std::time::Instant::now();
+        if let Some(f) = &mut log_file {
+            let _ = writeln!(f, "  reader: starting...");
+        }
+        let buf_reader = std::io::BufReader::new(reader);
+        for result in buf_reader.lines() {
+            match result {
+                Ok(line) => {
+                    let clean = strip_ansi(&line);
+                    let trimmed = clean.trim();
+                    if !trimmed.is_empty() {
+                        line_count += 1;
+                        let elapsed = read_start.elapsed();
+                        if let Some(f) = &mut log_file {
+                            let _ = writeln!(f, "  [{:>3}] +{:.1}s  {}", line_count, elapsed.as_secs_f64(), trimmed);
+                        }
+                        let _ = tx.send(parse_event(trimmed));
+                    }
                 }
-                let _ = tx.send(parse_event(trimmed));
+                Err(e) => {
+                    err_count += 1;
+                    if err_count <= 5 {
+                        if let Some(f) = &mut log_file {
+                            let _ = writeln!(f, "  [read-err #{}] {:?}", err_count, e);
+                        }
+                    }
+                    // Non-UTF-8 line or I/O error — skip and continue
+                }
             }
         }
-        let exit_status = child.wait();
         if let Some(f) = &mut log_file {
-            let _ = writeln!(f, "  exit: {:?}  (lines: {})", exit_status, line_count);
+            let _ = writeln!(f, "  reader: EOF (read_errors: {})", err_count);
+        }
+        let exit_status = child.wait();
+        let total_elapsed = read_start.elapsed();
+        if let Some(f) = &mut log_file {
+            let _ = writeln!(f, "  exit: {:?}  (lines: {}, elapsed: {:.1}s)", exit_status, line_count, total_elapsed.as_secs_f64());
         }
         let _ = tx.send(ToolEvent::Done);
     });

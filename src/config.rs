@@ -277,17 +277,8 @@ pub fn write_claude_config(cfg: &HuayuConfig) -> Result<(), AppError> {
     // so it's available regardless of how the process is launched.
     #[cfg(windows)]
     {
-        let shells = [
-            r"C:\Program Files\Git\bin\bash.exe",
-            r"C:\Program Files\Git\usr\bin\bash.exe",
-            r"C:\msys64\usr\bin\bash.exe",
-            r"C:\cygwin64\bin\bash.exe",
-        ];
-        for candidate in shells {
-            if std::path::Path::new(candidate).exists() {
-                env_map.insert("SHELL".into(), serde_json::Value::String(candidate.to_string()));
-                break;
-            }
+        if let Some(bash) = crate::tool::find_bash() {
+            env_map.insert("SHELL".into(), serde_json::Value::String(bash.display().to_string()));
         }
     }
 

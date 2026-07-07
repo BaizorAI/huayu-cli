@@ -93,6 +93,19 @@ if ($claudeFiles.Count -gt 0) {
     Warn "claude not found — run 'huayu update claude' first"
 }
 
+# bash (minimal set for Claude Code POSIX shell requirement on Windows)
+$gitBash = "C:\Program Files\Git\usr\bin\bash.exe"
+$gitMsys = "C:\Program Files\Git\usr\bin\msys-2.0.dll"
+if ((Test-Path $gitBash) -and (Test-Path $gitMsys)) {
+    New-Item -ItemType Directory -Path "$Stage\tools\bash" -Force | Out-Null
+    Copy-Item $gitBash "$Stage\tools\bash\bash.exe" -Force
+    Copy-Item $gitMsys "$Stage\tools\bash\msys-2.0.dll" -Force
+    $bashKB = [Math]::Round(((Get-Item $gitBash).Length + (Get-Item $gitMsys).Length) / 1KB, 0)
+    Ok "bash.exe + msys-2.0.dll  ($bashKB KB)"
+} else {
+    Warn "Git bash not found — Claude mode may fail on machines without Git"
+}
+
 # ── zip → release\ ─────────────────────────────────────────────────────────
 
 # Kill any running huayu instances so the exe isn't locked during zipping.

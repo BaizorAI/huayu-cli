@@ -771,7 +771,9 @@ mod tests {
 
     #[test]
     fn history_up_from_empty_does_nothing() {
+        let _g = TempConfigGuard::new();
         let mut app = make_app();
+        app.input_history.clear(); // ensure empty regardless of disk state
         app.input = "draft".to_string();
         app.cursor_pos = 5;
         app.history_up();

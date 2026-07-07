@@ -120,6 +120,16 @@ try {
         Write-Warn "claude not found in archive; run 'huayu update claude' after install."
     }
 
+    # tools\bash\ → tools\bash\ (minimal POSIX shell for Claude Code on Windows)
+    $bashDir = Get-ChildItem -Path $extractDir -Filter "bash" -Directory -Recurse |
+               Select-Object -First 1
+    if ($bashDir) {
+        $destBash = "$ToolsDir\bash"
+        New-Item -ItemType Directory -Path $destBash -Force | Out-Null
+        Copy-Item -Path "$($bashDir.FullName)\*" -Destination $destBash -Force
+        Write-Ok "bash         ->  $destBash"
+    }
+
     # version markers
     [System.IO.File]::WriteAllText("$ToolsDir\huayu.version", $version)
 
