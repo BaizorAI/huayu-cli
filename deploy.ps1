@@ -53,7 +53,7 @@ Write-Host ""
 
 Step "Checking remote versions on $RemoteHost ..."
 
-$components = @("huayu", "codex", "claude")
+$components = @("huayu", "codex", "claude", "skills")
 $toDeploy = @()
 
 foreach ($name in $components) {
@@ -117,6 +117,13 @@ foreach ($name in $toDeploy) {
                 "$ReleaseDir\$name-version.txt"
                 # Linux artifacts
                 "$ReleaseDir\$name-$ver-$LinuxToolsTriple.tar.gz"
+            )
+        }
+        "skills" {
+            $files = @(
+                "$ReleaseDir\skills-$ver-$Triple.zip"
+                "$ReleaseDir\skills-version.txt"
+                "$ReleaseDir\skills-$ver-$LinuxToolsTriple.tar.gz"
             )
         }
     }

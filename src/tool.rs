@@ -174,6 +174,8 @@ pub enum ToolEvent {
     NetworkError(String),
     Done,
     Error(String),
+    /// The tool is asking a question and waiting for user input.
+    Prompt(String),
 }
 
 /// Try to parse a line as a Claude Code stream-json event (NDJSON).
@@ -195,7 +197,7 @@ fn try_parse_stream_json(line: &str) -> Option<Vec<ToolEvent>> {
             let events = content
                 .lines()
                 .filter(|l| !l.trim().is_empty())
-                .map(|l| ToolEvent::Line(l.to_string()))
+                .map(|l| { let s = l.to_string(); if is_prompt_line(&s) { ToolEvent::Prompt(s) } else { ToolEvent::Line(s) } })
                 .collect();
             Some(events)
         }
@@ -229,6 +231,44 @@ fn try_parse_stream_json(line: &str) -> Option<Vec<ToolEvent>> {
     }
 }
 
+/// Detect whether a line looks like a prompt/question waiting for user input.
+fn is_prompt_line(line: &str) -> bool {
+    let trimmed = line.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+    // Lines ending with "?" that look like questions
+    if !trimmed.ends_with('?') {
+        return false;
+    }
+    let lower = trimmed.to_lowercase();
+    // Avoid false positives: pure decorative/spinner lines, test output, file paths
+    if lower.contains("error") || lower.contains("fail") || lower.contains("wrote ")
+        || lower.contains("written ") || lower.contains("created ") {
+        return false;
+    }
+    // Must look like a real question (reasonable length, starts with word char)
+    if trimmed.len() < 6 {
+        return false;
+    }
+    let first_char = trimmed.chars().next().unwrap();
+    if !first_char.is_alphabetic() && first_char != '\u{1f300}' {
+        // Allow emoji-starting lines (Unicode range >= U+1F300)
+        if (first_char as u32) < 0x1F300 {
+            return false;
+        }
+    }
+    // y/n patterns are strong indicators
+    if lower.contains("(y/n)") || lower.contains("y/n") || lower.contains("yes/no") {
+        return true;
+    }
+    // Short question lines (<=120 chars) ending with ?
+    if trimmed.len() <= 120 {
+        return true;
+    }
+    false
+}
+
 /// Parse a raw log line into a structured ToolEvent.
 pub fn parse_event(line: &str) -> ToolEvent {
     let lower = line.to_lowercase();
@@ -256,6 +296,10 @@ pub fn parse_event(line: &str) -> ToolEvent {
     }
     if lower.contains("test") && lower.contains("fail") {
         return ToolEvent::TestFailed(line.to_string());
+    }
+    // Detect prompt patterns: lines ending with "?" that ask for input.
+    if is_prompt_line(line) {
+        return ToolEvent::Prompt(line.to_string());
     }
     ToolEvent::Line(line.to_string())
 }
@@ -452,7 +496,13 @@ pub fn spawn(
         .map(|p| p.display().to_string())
         .unwrap_or_else(|| "(none found!)".to_string());
     let prompt_preview = if full_prompt.len() > 80 {
-        format!("{}...", &full_prompt[..80])
+        let end = full_prompt
+            .char_indices()
+            .take_while(|&(i, _)| i < 80)
+            .map(|(i, c)| i + c.len_utf8())
+            .last()
+            .unwrap_or(80);
+        format!("{}...", &full_prompt[..end])
     } else {
         full_prompt.clone()
     };

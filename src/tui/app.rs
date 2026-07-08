@@ -1,7 +1,7 @@
 use std::sync::mpsc;
 use std::time::Instant;
 
-use crate::command::{self, AppCommand, UpdateTarget};
+use crate::command::{self, AppCommand, SkillsAction, UpdateTarget};
 use crate::config::HuayuConfig;
 use crate::services::login::{LoginOutcome, LoginService};
 use crate::tool::{Message, ToolEvent, ToolProcess, ToolType};
@@ -75,6 +75,9 @@ pub struct App {
     // Task timing
     pub task_start: Option<Instant>,
 
+    /// True when the running tool has asked a question and is waiting for user input.
+    pub waiting_for_input: bool,
+
     // Background download/install progress
     pub update_rx: Option<mpsc::Receiver<String>>,
 
@@ -125,6 +128,13 @@ impl App {
             }
         }
 
+        // Auto-install built-in skills on first launch (never overwrites user files).
+        if !crate::config::skills_version_path().exists() {
+            if let Err(e) = crate::config::install_builtin_skills() {
+                startup_lines.push(format!("[!] 技能安装失败: {}", e));
+            }
+        }
+
         Self {
             config,
             tool_type,
@@ -140,6 +150,7 @@ impl App {
             history_cursor: None,
             input_draft: String::new(),
             task_start: None,
+            waiting_for_input: false,
             update_rx: None,
             login_overlay: None,
             show_settings: false,
@@ -248,11 +259,11 @@ impl App {
         if self.main_lines.len() > MAX_LINES {
             self.main_lines.remove(0);
         }
-        if !self.auto_scroll {
-            // Increment offset so the view stays anchored to the same content
-            self.scroll_offset = self.scroll_offset.saturating_add(1);
-        }
-        // When auto_scroll=true, scroll_offset stays 0 and the view follows the latest line
+        // When auto_scroll is on, keep scroll_offset at 0 (bottom-anchored).
+        // When auto_scroll is off (user scrolled up), leave scroll_offset alone
+        // so the user keeps looking at the same distance from the bottom.
+        // New output will shift content down naturally; user can PageDown to
+        // catch up and re-engage auto_scroll.
     }
 
     /// Skip pure-spinner / decorative / progress-indicator lines in non-debug mode.
@@ -316,6 +327,10 @@ impl App {
                     last_line = Some(s.clone());
                     self.push_main(s.clone());
                 }
+                ToolEvent::Prompt(s) => {
+                    self.waiting_for_input = true;
+                    self.push_main(format!("❓ {}", s));
+                }
                 ToolEvent::FileWritten(s) => {
                     self.push_main(format!("[文件] {}", s));
                 }
@@ -343,6 +358,7 @@ impl App {
                         .map(|t| format!(" ({:.1}s)", t.elapsed().as_secs_f32()))
                         .unwrap_or_default();
                     self.push_main(format!("─── 完成{} ───", elapsed));
+                    self.waiting_for_input = false;
                     self.tool_process = None;
                 }
             }
@@ -512,6 +528,10 @@ impl App {
                 self.start_update(target);
             }
 
+            AppCommand::Skills(action) => {
+                self.handle_skills(action);
+            }
+
             AppCommand::Status => {
                 self.show_status();
             }
@@ -609,6 +629,56 @@ impl App {
         self.push_main("──────────────────────────────────────────────────");
     }
 
+    fn handle_skills(&mut self, action: SkillsAction) {
+        match action {
+            SkillsAction::List => {
+                self.push_main("── 已安装技能 ────────────────────────────────────");
+                let claude_skills = crate::services::installer::list_installed_skills("claude");
+                let codex_skills = crate::services::installer::list_installed_skills("codex");
+                self.push_main(format!(
+                    "  Claude ({}): {}",
+                    claude_skills.len(),
+                    if claude_skills.is_empty() {
+                        "(无)".to_string()
+                    } else {
+                        claude_skills.join(", ")
+                    }
+                ));
+                self.push_main(format!(
+                    "  Codex  ({}): {}",
+                    codex_skills.len(),
+                    if codex_skills.is_empty() {
+                        "(无)".to_string()
+                    } else {
+                        codex_skills.join(", ")
+                    }
+                ));
+                let ver = std::fs::read_to_string(crate::config::skills_version_path())
+                    .unwrap_or_else(|_| "builtin".to_string());
+                self.push_main(format!("  版本: {}", ver.trim()));
+                self.push_main("──────────────────────────────────────────────────");
+                self.push_main(
+                    "  提示: /skills update → 从服务器更新技能",
+                );
+            }
+            SkillsAction::Update | SkillsAction::Install => {
+                if self.update_rx.is_some() {
+                    self.push_main("⚠ 更新正在进行中，请稍候...");
+                    return;
+                }
+                match crate::services::installer::download_skills() {
+                    Err(e) => {
+                        self.push_main(format!("✗ 无法启动技能更新: {}", e));
+                    }
+                    Ok(rx) => {
+                        self.update_rx = Some(rx);
+                        self.push_main("─── 开始下载/更新技能 ───");
+                    }
+                }
+            }
+        }
+    }
+
     // ── Switch tool ────────────────────────────────────────────────────────
 
     pub fn switch_tool(&mut self, next: ToolType) {
@@ -620,6 +690,7 @@ impl App {
             self.push_main(format!("[任务已取消] 切换到 {}", next.as_str()));
             self.tool_process = None;
             self.task_start = None;
+            self.waiting_for_input = false;
         }
         self.tool_type = next;
         self.config.active_tool = self.tool_type.as_str().to_string();
@@ -679,6 +750,9 @@ impl App {
         if let Some(proc) = &mut self.tool_process {
             let line = format!("{}\n", input);
             proc.write_input(&line);
+            // Echo user reply to main panel (after write_input so NLL sees proc borrow ends)
+            self.waiting_for_input = false;
+            self.push_main(format!("> {}", input));
             if self.debug {
                 self.push_main(format!("▷ {}", input));
             }

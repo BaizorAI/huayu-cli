@@ -81,7 +81,8 @@ function Sync-AllVersions {
     param(
         [string]$HuayuVer,
         [string]$CodexVer,
-        [string]$ClaudeVer
+        [string]$ClaudeVer,
+        [string]$SkillsVer
     )
 
     # 1. Cargo.toml (UTF-8 safe)
@@ -98,6 +99,7 @@ function Sync-AllVersions {
         $rs = [System.IO.File]::ReadAllText($installerPath, $utf8NoBom)
         $rs = $rs -replace '(CODEX_VERSION:\s*&str\s*=\s*")[^"]+(")', "`${1}$CodexVer`${2}"
         $rs = $rs -replace '(CLAUDE_VERSION:\s*&str\s*=\s*")[^"]+(")', "`${1}$ClaudeVer`${2}"
+        $rs = $rs -replace '(SKILLS_VERSION:\s*&str\s*=\s*")[^"]+(")', "`${1}$SkillsVer`${2}"
         [System.IO.File]::WriteAllText($installerPath, $rs, $utf8NoBom)
     }
 
@@ -147,7 +149,7 @@ function Build-Huayu {
     }
 
     # Sync versions & build
-    Sync-AllVersions -HuayuVer $Versions.huayu -CodexVer $Versions.codex -ClaudeVer $Versions.claude
+    Sync-AllVersions -HuayuVer $Versions.huayu -CodexVer $Versions.codex -ClaudeVer $Versions.claude -SkillsVer $Versions.skills
     Save-Versions
 
     Step "cargo build --release ..."
@@ -202,7 +204,7 @@ function Build-Tool([string]$Name) {
     }
 
     # Sync versions to files that embed them
-    Sync-AllVersions -HuayuVer $Versions.huayu -CodexVer $Versions.codex -ClaudeVer $Versions.claude
+    Sync-AllVersions -HuayuVer $Versions.huayu -CodexVer $Versions.codex -ClaudeVer $Versions.claude -SkillsVer $Versions.skills
 
     # Build the specific tool using package-tools.ps1 logic
     Step "Building $Name $currentVer ..."
@@ -235,7 +237,7 @@ function Build-Tool([string]$Name) {
 Write-Host ""
 Write-Host "  huayu build system" -ForegroundColor White
 Write-Host "  ─────────────────────────────────────────────────────" -ForegroundColor DarkGray
-Write-Host "  versions.json: huayu=$($Versions.huayu) codex=$($Versions.codex) claude=$($Versions.claude)" -ForegroundColor DarkGray
+Write-Host "  versions.json: huayu=$($Versions.huayu) codex=$($Versions.codex) claude=$($Versions.claude) skills=$($Versions.skills)" -ForegroundColor DarkGray
 Write-Host ""
 
 $built = 0

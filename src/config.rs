@@ -139,6 +139,21 @@ pub fn claude_config_dir() -> PathBuf {
     config_dir().join("claude")
 }
 
+/// Claude Code skills directory: ~/.huayu/claude/skills/
+pub fn claude_skills_dir() -> PathBuf {
+    claude_config_dir().join("skills")
+}
+
+/// Codex rules file path: ~/.huayu/codex/rules.md
+pub fn codex_rules_path() -> PathBuf {
+    codex_home().join("rules.md")
+}
+
+/// Skills version marker: ~/.huayu/skills/.skills-version
+pub fn skills_version_path() -> PathBuf {
+    config_dir().join("skills").join(".skills-version")
+}
+
 pub fn load() -> HuayuConfig {
     let path = config_dir().join(CONFIG_FILE);
     match std::fs::read_to_string(&path) {
@@ -289,6 +304,52 @@ pub fn write_claude_config(cfg: &HuayuConfig) -> Result<(), AppError> {
     });
     std::fs::write(dir.join("settings.json"), serde_json::to_string_pretty(&settings)?).map_err(AppError::Io)?;
 
+    Ok(())
+}
+
+/// Install built-in Claude Code skills into ~/.huayu/claude/skills/.
+/// Only writes files that don't already exist — never overwrites user modifications.
+pub fn install_builtin_claude_skills() -> Result<usize, AppError> {
+    let dir = claude_skills_dir();
+    std::fs::create_dir_all(&dir).map_err(AppError::Io)?;
+    let mut written = 0;
+    for (name, content) in crate::skills::BUILTIN_CLAUDE_SKILLS {
+        let path = dir.join(name);
+        if !path.exists() {
+            std::fs::write(&path, content).map_err(AppError::Io)?;
+            written += 1;
+        }
+    }
+    Ok(written)
+}
+
+/// Install built-in Codex rules into ~/.huayu/codex/rules.md.
+/// Only writes if the file doesn't already exist — never overwrites user modifications.
+pub fn install_builtin_codex_rules() -> Result<bool, AppError> {
+    let path = codex_rules_path();
+    if path.exists() {
+        return Ok(false);
+    }
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(AppError::Io)?;
+    }
+    std::fs::write(&path, crate::skills::BUILTIN_CODEX_RULES).map_err(AppError::Io)?;
+    Ok(true)
+}
+
+/// Install all built-in skills (Claude + Codex) on first launch.
+pub fn install_builtin_skills() -> Result<(), AppError> {
+    let claude_count = install_builtin_claude_skills()?;
+    let codex_written = install_builtin_codex_rules()?;
+    if claude_count > 0 || codex_written {
+        // Write version marker so we know builtins have been installed.
+        let ver_dir = skills_version_path()
+            .parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| config_dir().join("skills"));
+        std::fs::create_dir_all(&ver_dir).map_err(AppError::Io)?;
+        let _ = std::fs::write(skills_version_path(), "builtin\n");
+    }
     Ok(())
 }
 
@@ -515,5 +576,72 @@ mod tests {
         assert!(!masked.contains("abcd1234efgh5678"), "full key must not appear");
         assert!(masked.contains("sk-"), "prefix preserved");
         assert!(masked.contains("5678"), "last 4 chars preserved");
+    }
+
+    #[test]
+    fn skills_dirs_are_under_huayu_root() {
+        let _g = TempConfigGuard::new();
+        let root = config_dir();
+        assert!(claude_skills_dir().starts_with(&root),
+            "claude skills dir {} should be under {}",
+            claude_skills_dir().display(), root.display());
+        assert!(codex_rules_path().starts_with(&root),
+            "codex rules path {} should be under {}",
+            codex_rules_path().display(), root.display());
+    }
+
+    #[test]
+    fn install_builtin_claude_skills_writes_files() {
+        let _g = TempConfigGuard::new();
+        // Ensure clean state
+        let dir = claude_skills_dir();
+        if dir.exists() {
+            std::fs::remove_dir_all(&dir).unwrap();
+        }
+        let count = install_builtin_claude_skills().unwrap();
+        assert!(count > 0, "at least one claude skill should be written");
+        // Verify at least one file exists
+        for (name, _) in crate::skills::BUILTIN_CLAUDE_SKILLS {
+            assert!(dir.join(name).exists(), "{} should exist", name);
+        }
+    }
+
+    #[test]
+    fn install_builtin_claude_skills_idempotent() {
+        let _g = TempConfigGuard::new();
+        let dir = claude_skills_dir();
+        if dir.exists() {
+            std::fs::remove_dir_all(&dir).unwrap();
+        }
+        let first = install_builtin_claude_skills().unwrap();
+        assert!(first > 0);
+        let second = install_builtin_claude_skills().unwrap();
+        assert_eq!(second, 0, "second install should write nothing");
+    }
+
+    #[test]
+    fn install_builtin_codex_rules_writes_file() {
+        let _g = TempConfigGuard::new();
+        let path = codex_rules_path();
+        if path.exists() {
+            std::fs::remove_file(&path).unwrap();
+        }
+        let written = install_builtin_codex_rules().unwrap();
+        assert!(written, "codex rules should be written");
+        assert!(path.exists());
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert!(content.contains("huayu"));
+    }
+
+    #[test]
+    fn install_builtin_codex_rules_idempotent() {
+        let _g = TempConfigGuard::new();
+        let path = codex_rules_path();
+        // ensure file exists
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, "custom rules").unwrap();
+        let written = install_builtin_codex_rules().unwrap();
+        assert!(!written, "should not overwrite existing rules");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "custom rules");
     }
 }

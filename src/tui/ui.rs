@@ -91,7 +91,9 @@ fn render_main_panel(f: &mut Frame, app: &App, area: Rect) {
     } else {
         Style::default().fg(theme::BORDER)
     };
-    let title = if running {
+    let title = if running && app.waiting_for_input {
+        " 主工作区 [等待输入...] "
+    } else if running {
         " 主工作区 [●] "
     } else if !app.auto_scroll {
         " 主工作区 [已暂停] "

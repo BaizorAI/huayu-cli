@@ -5,11 +5,19 @@ pub enum AppCommand {
     Switch(String),
     Model(String),
     Update(UpdateTarget),
+    Skills(SkillsAction),
     Status,
     Help,
     Clear,
     Quit,
     Unknown(String),
+}
+
+#[derive(Debug, Clone)]
+pub enum SkillsAction {
+    List,
+    Update,
+    Install,
 }
 
 #[derive(Debug, Clone)]
@@ -53,6 +61,12 @@ pub fn parse(input: &str) -> Option<AppCommand> {
         "model" => AppCommand::Model(args.to_string()),
         // /update and /install are synonyms; install kept for muscle memory
         "update" | "install" => AppCommand::Update(UpdateTarget::from_str(args)),
+        "skills" => match args.to_lowercase().as_str() {
+            "" | "list" => AppCommand::Skills(SkillsAction::List),
+            "update" => AppCommand::Skills(SkillsAction::Update),
+            "install" => AppCommand::Skills(SkillsAction::Install),
+            _ => AppCommand::Unknown(format!("skills {}", args)),
+        },
         "status" => AppCommand::Status,
         "help" | "?" => AppCommand::Help,
         "clear" => AppCommand::Clear,
@@ -68,6 +82,7 @@ pub fn help_lines() -> Vec<&'static str> {
         "/switch codex|claude     切换当前工具",
         "/model <name>            更改默认模型",
         "/update [codex|claude]   下载/更新工具（默认全部）",
+        "/skills [list|update]    查看或更新技能插件",
         "/status                  显示配置与工具状态",
         "/clear                   清空面板",
         "/help                    显示本帮助",
@@ -182,5 +197,33 @@ mod tests {
         let all = UpdateTarget::All.tool_names();
         assert!(all.contains(&"codex"));
         assert!(all.contains(&"claude"));
+    }
+
+    #[test]
+    fn parse_skills_list() {
+        assert!(matches!(
+            parse("/skills"),
+            Some(AppCommand::Skills(SkillsAction::List))
+        ));
+        assert!(matches!(
+            parse("/skills list"),
+            Some(AppCommand::Skills(SkillsAction::List))
+        ));
+    }
+
+    #[test]
+    fn parse_skills_update() {
+        assert!(matches!(
+            parse("/skills update"),
+            Some(AppCommand::Skills(SkillsAction::Update))
+        ));
+    }
+
+    #[test]
+    fn parse_skills_install() {
+        assert!(matches!(
+            parse("/skills install"),
+            Some(AppCommand::Skills(SkillsAction::Install))
+        ));
     }
 }
