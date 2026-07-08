@@ -745,11 +745,9 @@ impl App {
         }
 
         // ── Tool is running ──────────────────────────────────────────────
-        // Only forward input when the tool is actually waiting for a reply
-        // (e.g. Claude y/n confirmation via PTY). Both Codex exec and
-        // Claude --print run with permissions skipped, so input forwarding
-        // should almost never happen. If the tool is running but NOT
-        // waiting, warn and keep the input in the box.
+        // Forward input only when the tool is actually waiting for a reply
+        // (e.g. Claude y/n confirmation via PTY). Otherwise, the user is
+        // sending a new prompt — kill the running tool and spawn fresh.
         if self.tool_process.is_some() {
             if self.waiting_for_input {
                 self.input.clear();
@@ -764,10 +762,17 @@ impl App {
                 if self.debug {
                     self.push_main(format!("▷ {}", input));
                 }
-            } else {
-                self.push_main("⚠ 任务进行中，完成后重试（或按 Esc 取消）");
+                return;
             }
-            return;
+            // Tool is running but not waiting. Kill it and fall through
+            // to spawn a new one with the user's input.
+            if let Some(mut proc) = self.tool_process.take() {
+                proc.kill();
+            }
+            self.task_start = None;
+            self.waiting_for_input = false;
+            self.pending_assistant_output.clear();
+            self.push_main("[已取消] 开始新任务...");
         }
 
         self.input.clear();
@@ -807,13 +812,6 @@ impl App {
                 }
                 crate::config::save_input_history(&self.input_history);
             }
-        }
-
-        // Tool exited after asking a question — user's reply continues the
-        // conversation. Clear flag and echo; fall through to spawn.
-        if self.waiting_for_input {
-            self.waiting_for_input = false;
-            self.push_main(format!("> {}", input));
         }
 
         // Plain prompt → spawn tool

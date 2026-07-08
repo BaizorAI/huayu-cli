@@ -1,6 +1,6 @@
 [package]
 name = "huayu"
-version = "0.2.26"
+version = "0.2.30"
 edition = "2021"
 
 [[bin]]
