@@ -57,6 +57,10 @@ fn render_status_bar(f: &mut Frame, app: &App, area: Rect) {
                 .fg(theme::TITLE)
                 .add_modifier(Modifier::BOLD),
         ),
+        Span::styled(
+            format!("v{} ", env!("CARGO_PKG_VERSION")),
+            Style::default().fg(theme::DIM),
+        ),
         Span::styled("│", Style::default().fg(theme::BORDER)),
         Span::styled(tool_label, Style::default().fg(theme::HIGHLIGHT)),
         Span::styled("[Tab切换]", Style::default().fg(theme::DIM)),

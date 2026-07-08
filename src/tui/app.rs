@@ -80,10 +80,6 @@ pub struct App {
     /// True when the running tool has asked a question and is waiting for user input.
     pub waiting_for_input: bool,
 
-    /// Tracks whether a Prompt event was seen in the current task (persists
-    /// across drain cycles, unlike the local variable in drain_tool_events).
-    pub(crate) prompt_seen_this_task: bool,
-
     // Background download/install progress
     pub update_rx: Option<mpsc::Receiver<String>>,
 
@@ -158,7 +154,6 @@ impl App {
             input_draft: String::new(),
             task_start: None,
             waiting_for_input: false,
-            prompt_seen_this_task: false,
             update_rx: None,
             login_overlay: None,
             show_settings: false,
@@ -336,12 +331,6 @@ impl App {
                     self.pending_assistant_output.push(s.clone());
                     self.push_main(s.clone());
                 }
-                ToolEvent::Prompt(s) => {
-                    self.prompt_seen_this_task = true;
-                    self.waiting_for_input = true;
-                    self.pending_assistant_output.push(s.clone());
-                    self.push_main(format!("❓ {}", s));
-                }
                 ToolEvent::FileWritten(s) => {
                     self.push_main(format!("[文件] {}", s));
                 }
@@ -376,11 +365,7 @@ impl App {
                         .unwrap_or_default();
                     self.push_main(format!("─── 完成{} ───", elapsed));
                     self.tool_process = None;
-                    // If the tool asked a question before exiting (e.g. Claude --print mode),
-                    // keep waiting_for_input so the user's reply continues the conversation.
-                    if !self.prompt_seen_this_task {
-                        self.waiting_for_input = false;
-                    }
+                    self.waiting_for_input = false;
                 }
             }
         }
@@ -803,6 +788,10 @@ impl App {
             proc.write_input(&line);
             // Echo user reply to main panel (after write_input so NLL sees proc borrow ends)
             self.waiting_for_input = false;
+            // Also save the reply to conversation history — if the prompt was a
+            // false positive (AI text that happened to match is_prompt_line),
+            // the conversation-continuation path can still pick it up.
+            self.messages.push(Message::user(&input));
             self.push_main(format!("> {}", input));
             if self.debug {
                 self.push_main(format!("▷ {}", input));
@@ -870,7 +859,6 @@ impl App {
             self.config.claude_max_turns,
         ) {
             Ok(proc) => {
-                self.prompt_seen_this_task = false;
                 self.task_start = Some(Instant::now());
                 self.tool_process = Some(proc);
                 self.push_main("⏳ 思考中...");
