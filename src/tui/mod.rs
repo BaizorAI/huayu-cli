@@ -182,6 +182,11 @@ fn handle_key(app: &mut App, code: KeyCode, mods: KeyModifiers, viewport_h: usiz
                 app.push_progress("[Esc] 任务已取消");
                 app.tool_process = None;
                 app.task_start = None;
+                app.waiting_for_input = false;
+                app.pending_assistant_output.clear();
+            } else if app.waiting_for_input {
+                app.waiting_for_input = false;
+                app.push_progress("[Esc] 已取消输入");
             }
         }
 

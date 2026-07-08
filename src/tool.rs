@@ -451,6 +451,7 @@ pub fn spawn(
                 CommandBuilder::new(bin)
             };
             c.arg("--print");
+            c.arg("--verbose");
             c.arg("--output-format");
             c.arg("stream-json");
             c.arg("--dangerously-skip-permissions");

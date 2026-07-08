@@ -281,8 +281,8 @@ if (-not $NoLinux) {
             $wslArgs += "--skip-tools"
         }
 
-        # Convert Windows path to WSL path
-        $wslScriptDir = wsl wslpath -u "$ScriptDir"
+        # Convert Windows path to WSL path (-e bypasses shell so backslashes survive)
+        $wslScriptDir = wsl -e wslpath -u "$ScriptDir"
         $wslScript = "$wslScriptDir/build-linux-all.sh"
 
         Step "wsl bash build-linux-all.sh $($wslArgs -join ' ') ..."

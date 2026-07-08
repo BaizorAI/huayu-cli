@@ -54,6 +54,8 @@ pub struct App {
 
     // Chat history (conversation context passed to tool)
     pub messages: Vec<Message>,
+    /// Accumulated assistant output for the current tool run.
+    pub pending_assistant_output: Vec<String>,
 
     // Main unified output panel
     pub main_lines: Vec<String>,
@@ -141,6 +143,7 @@ impl App {
             tool_process: None,
             connection_status,
             messages: Vec::new(),
+            pending_assistant_output: Vec::new(),
             main_lines: startup_lines,
             scroll_offset: 0,
             auto_scroll: true,
@@ -312,6 +315,7 @@ impl App {
         };
 
         let mut last_line: Option<String> = None;
+        let mut saw_prompt = false;
         for ev in events {
             match &ev {
                 ToolEvent::Line(s) => {
@@ -325,10 +329,13 @@ impl App {
                         }
                     }
                     last_line = Some(s.clone());
+                    self.pending_assistant_output.push(s.clone());
                     self.push_main(s.clone());
                 }
                 ToolEvent::Prompt(s) => {
+                    saw_prompt = true;
                     self.waiting_for_input = true;
+                    self.pending_assistant_output.push(s.clone());
                     self.push_main(format!("❓ {}", s));
                 }
                 ToolEvent::FileWritten(s) => {
@@ -352,14 +359,24 @@ impl App {
                     self.push_main(format!("✗ 错误: {}", s));
                 }
                 ToolEvent::Done => {
+                    // Save accumulated assistant output to conversation history.
+                    if !self.pending_assistant_output.is_empty() {
+                        let text = self.pending_assistant_output.join("\n");
+                        self.messages.push(Message::assistant(text));
+                        self.pending_assistant_output.clear();
+                    }
                     let elapsed = self
                         .task_start
                         .take()
                         .map(|t| format!(" ({:.1}s)", t.elapsed().as_secs_f32()))
                         .unwrap_or_default();
                     self.push_main(format!("─── 完成{} ───", elapsed));
-                    self.waiting_for_input = false;
                     self.tool_process = None;
+                    // If the tool asked a question before exiting (e.g. Claude --print mode),
+                    // keep waiting_for_input so the user's reply continues the conversation.
+                    if !saw_prompt {
+                        self.waiting_for_input = false;
+                    }
                 }
             }
         }
@@ -517,6 +534,36 @@ impl App {
                     self.settings_model_input = name.clone();
                     let _ = crate::config::save(&self.config);
                     self.push_main(format!("✓ 模型已切换到: {}", name));
+                }
+            }
+
+            AppCommand::Cd(path) => {
+                if path.is_empty() {
+                    let cwd = std::env::current_dir()
+                        .map(|p| p.display().to_string())
+                        .unwrap_or_else(|_| "?".to_string());
+                    self.push_main(format!("当前工作目录: {}", cwd));
+                } else {
+                    let expanded = if path.starts_with('~') {
+                        if let Some(home) = dirs::home_dir() {
+                            home.join(path.trim_start_matches('~').trim_start_matches('/').trim_start_matches('\\'))
+                        } else {
+                            std::path::PathBuf::from(&path)
+                        }
+                    } else {
+                        std::path::PathBuf::from(&path)
+                    };
+                    match std::env::set_current_dir(&expanded) {
+                        Ok(()) => {
+                            let new_cwd = std::env::current_dir()
+                                .map(|p| p.display().to_string())
+                                .unwrap_or_else(|_| expanded.display().to_string());
+                            self.push_main(format!("✓ 工作目录已切换到: {}", new_cwd));
+                        }
+                        Err(e) => {
+                            self.push_main(format!("✗ 无法切换目录: {}", e));
+                        }
+                    }
                 }
             }
 
@@ -757,6 +804,13 @@ impl App {
                 self.push_main(format!("▷ {}", input));
             }
             return;
+        }
+
+        // Tool exited after asking a question — user's reply continues the conversation.
+        // Echo the reply and clear the flag; fall through to spawn a new tool with history.
+        if self.waiting_for_input {
+            self.waiting_for_input = false;
+            self.push_main(format!("> {}", input));
         }
 
         // Plain prompt → spawn tool

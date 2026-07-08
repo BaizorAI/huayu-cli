@@ -4,6 +4,7 @@ pub enum AppCommand {
     Login,
     Switch(String),
     Model(String),
+    Cd(String),
     Update(UpdateTarget),
     Skills(SkillsAction),
     Status,
@@ -59,6 +60,7 @@ pub fn parse(input: &str) -> Option<AppCommand> {
         "login" => AppCommand::Login,
         "switch" => AppCommand::Switch(args.to_string()),
         "model" => AppCommand::Model(args.to_string()),
+        "cd" | "cwd" | "workspace" => AppCommand::Cd(args.to_string()),
         // /update and /install are synonyms; install kept for muscle memory
         "update" | "install" => AppCommand::Update(UpdateTarget::from_str(args)),
         "skills" => match args.to_lowercase().as_str() {
@@ -81,6 +83,7 @@ pub fn help_lines() -> Vec<&'static str> {
         "/login                   登录 baizor.com",
         "/switch codex|claude     切换当前工具",
         "/model <name>            更改默认模型",
+        "/cd <path>               切换工作目录",
         "/update [codex|claude]   下载/更新工具（默认全部）",
         "/skills [list|update]    查看或更新技能插件",
         "/status                  显示配置与工具状态",
@@ -120,6 +123,24 @@ mod tests {
     fn parse_model_without_name_gives_empty_args() {
         let cmd = parse("/model").unwrap();
         assert!(matches!(cmd, AppCommand::Model(s) if s.is_empty()));
+    }
+
+    #[test]
+    fn parse_cd_with_path() {
+        let cmd = parse("/cd /tmp/foo").unwrap();
+        assert!(matches!(cmd, AppCommand::Cd(s) if s == "/tmp/foo"));
+    }
+
+    #[test]
+    fn parse_cd_without_path() {
+        let cmd = parse("/cd").unwrap();
+        assert!(matches!(cmd, AppCommand::Cd(s) if s.is_empty()));
+    }
+
+    #[test]
+    fn parse_workspace_is_cd_synonym() {
+        let cmd = parse("/workspace /home").unwrap();
+        assert!(matches!(cmd, AppCommand::Cd(s) if s == "/home"));
     }
 
     #[test]
