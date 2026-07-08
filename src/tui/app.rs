@@ -743,6 +743,33 @@ impl App {
         if input.is_empty() {
             return;
         }
+
+        // ── Tool is running ──────────────────────────────────────────────
+        // Only forward input when the tool is actually waiting for a reply
+        // (e.g. Claude y/n confirmation via PTY). Both Codex exec and
+        // Claude --print run with permissions skipped, so input forwarding
+        // should almost never happen. If the tool is running but NOT
+        // waiting, warn and keep the input in the box.
+        if self.tool_process.is_some() {
+            if self.waiting_for_input {
+                self.input.clear();
+                self.cursor_pos = 0;
+                let line = format!("{}\n", input);
+                if let Some(proc) = &mut self.tool_process {
+                    proc.write_input(&line);
+                }
+                self.waiting_for_input = false;
+                self.messages.push(Message::user(&input));
+                self.push_main(format!("> {}", input));
+                if self.debug {
+                    self.push_main(format!("▷ {}", input));
+                }
+            } else {
+                self.push_main("⚠ 任务进行中，完成后重试（或按 Esc 取消）");
+            }
+            return;
+        }
+
         self.input.clear();
         self.cursor_pos = 0;
 
@@ -782,25 +809,8 @@ impl App {
             }
         }
 
-        // If a tool task is already running, forward input to its PTY stdin.
-        if let Some(proc) = &mut self.tool_process {
-            let line = format!("{}\n", input);
-            proc.write_input(&line);
-            // Echo user reply to main panel (after write_input so NLL sees proc borrow ends)
-            self.waiting_for_input = false;
-            // Also save the reply to conversation history — if the prompt was a
-            // false positive (AI text that happened to match is_prompt_line),
-            // the conversation-continuation path can still pick it up.
-            self.messages.push(Message::user(&input));
-            self.push_main(format!("> {}", input));
-            if self.debug {
-                self.push_main(format!("▷ {}", input));
-            }
-            return;
-        }
-
-        // Tool exited after asking a question — user's reply continues the conversation.
-        // Echo the reply and clear the flag; fall through to spawn a new tool with history.
+        // Tool exited after asking a question — user's reply continues the
+        // conversation. Clear flag and echo; fall through to spawn.
         if self.waiting_for_input {
             self.waiting_for_input = false;
             self.push_main(format!("> {}", input));
