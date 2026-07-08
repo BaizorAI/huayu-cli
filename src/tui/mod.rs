@@ -183,6 +183,7 @@ fn handle_key(app: &mut App, code: KeyCode, mods: KeyModifiers, viewport_h: usiz
                 app.tool_process = None;
                 app.task_start = None;
                 app.waiting_for_input = false;
+                app.prompt_seen_this_task = false;
                 app.pending_assistant_output.clear();
             } else if app.waiting_for_input {
                 app.waiting_for_input = false;

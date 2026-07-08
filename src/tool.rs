@@ -350,8 +350,13 @@ fn kill_process(pid: u32) {
     }
     #[cfg(windows)]
     {
+        // Suppress stderr: the process may have already exited (e.g. tool
+        // finished normally and EOF was seen before kill is called), which
+        // would cause taskkill to print "ERROR: The process not found."
         let _ = std::process::Command::new("taskkill")
             .args(["/PID", &pid.to_string(), "/F"])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
             .spawn();
     }
 }
